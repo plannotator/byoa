@@ -1,0 +1,20 @@
+17:39:21 demo apps up on 4100 (notes) and 4200 (tasks)
+17:39:21 claude started in /tmp/byoa-live/proj
+17:39:39 timed out waiting for the prompt hint
+17:39:44 terminal shows: BYOA: connected to Notes (http://localhost:4100) as Ramos.
+17:39:45 terminal shows: BYOA: connected to Tasks (http://localhost:4200) as Ramos.
+17:39:46 PASS 1 connect | {4100: [('ses_tGvQCZQKkEk3T3IwDperdIRC', 'ready', {'folder_name': 'proj', 'git_remote': 'github.com/acme/live-proj'})], 4200: [('ses_YGJiTOWkuhqtRAseRdkxQzYW', 'ready', {'folder_name': 'proj', 'git_remote': 'github.com/acme/live-proj'})]}
+17:39:50 /byoa status shows: ['BYOA:Notes(http://localhost:4100)·connectedasRamos·thissession:registered', 'BYOA:Tasks(http://localhost:4200)·connectedasRamos·thissession:registered']
+17:39:54 after /clear, sessions: {4100: 'ses_2n1bX1_hSyNJSIbOrJ7GPGVK', 4200: 'ses_Gc_h5EUh_eZuKG3FtmcRGFAM'}
+17:39:54 sent msg_y7ca-AkkpVOis-61QjdQ_w
+17:40:06 permission prompt for the tool: after 7.0 s Notes saw the session as [('ses_tGvQCZQKkEk3T3IwDperdIRC', 'ready', None), ('ses_2n1bX1_hSyNJSIbOrJ7GPGVK', 'blocked', 'permission')] ; pressed Enter (Yes)
+17:40:08 PASS 2 tool turn | msg_y7ca-AkkpVOis-61QjdQ_w: accepted started toolx2 delta done tools=['ToolSearch', 'mcp__byoa__notes'] activity=[{'text': 'hello from BYOA', 'session': 'ses_2n1bX1_hSyNJSIbOrJ7GPGVK', 'at': '2026-10-21T21:40:06.319Z'}]
+17:40:08 sent msg_9tHSpyO0spVD-nxlfX4k8w (Notes) and msg_2PGbAxQ_QeGdjYY1cOmL5w (Tasks) 2 ms apart
+17:40:15 PASS 3 two apps, one at a time | Notes msg_9tHSpyO0spVD-nxlfX4k8w: accepted started deltax2 done | Tasks msg_2PGbAxQ_QeGdjYY1cOmL5w: accepted queued started delta done | second started 1.0 s after the first was done
+17:40:17 interrupt: {'outcome': 'interrupt_sent'}
+17:40:19 PASS 4 interrupt | msg_lBEbKwN32-wLTK-uOKmHEA: accepted started deltax25 interrupted reason=stopped
+17:40:19 PASS 5 provenance line | [BYOA] Notes (localhost:4100) · chat from Ramos · msg_lBEbKwN32-wLTK-uOKmHEA (and 6 more)
+17:40:23 PASS 6 /clear re-registers | {4100: "ses_2n1bX1_hSyNJSIbOrJ7GPGVK -> ['ses_CALCN_m7GdfyHEYWDu9xMrpr']", 4200: "ses_Gc_h5EUh_eZuKG3FtmcRGFAM -> ['ses_UZ5-KW5pUlpRi8SU5JdJ9-Wv']"}
+17:40:23 PASS extra: permission prompt shows as blocked | [[('ses_tGvQCZQKkEk3T3IwDperdIRC', 'ready', None), ('ses_2n1bX1_hSyNJSIbOrJ7GPGVK', 'blocked', 'permission')]]
+17:40:23 band above the prompt: True
+17:40:25 summary: 1 connect=PASS 2 tool turn=PASS 3 two apps, one at a time=PASS 4 interrupt=PASS 5 provenance line=PASS 6 /clear re-registers=PASS extra: permission prompt shows as blocked=PASS

@@ -1,0 +1,50 @@
+#!/usr/bin/expect -f
+# Runs one host in a real pty and types for a driver script (live.ts),
+# through files in $TTY_DIR:
+#   type     a line to type, then Enter; the file is removed when typed
+#   typed    written here after each line: the time Enter was pressed
+#   stop     the driver is done: Ctrl+C twice, then wait for the host to exit
+# It never sleeps: it keeps reading the pty, or a host blocks on its own
+# output. Everything the host draws goes to $TTY_LOG.
+#   TTY_CMD   the host command, as a Tcl list
+#   TTY_CWD   the folder to start in
+
+log_file -noappend $env(TTY_LOG)
+set stty_init "rows 40 cols 160"
+set dir $env(TTY_DIR)
+cd $env(TTY_CWD)
+eval spawn $env(TTY_CMD)
+
+proc drain {secs} {
+	set timeout $secs
+	expect {
+		eof { return 1 }
+		timeout { return 0 }
+		-re ".+" { exp_continue -continue_timer }
+	}
+}
+
+while {1} {
+	if {[file exists "$dir/stop"]} { break }
+	if {[file exists "$dir/type"]} {
+		set f [open "$dir/type" r]
+		set line [string trimright [read $f] "\n"]
+		close $f
+		file delete "$dir/type"
+		send -- $line
+		if {[drain 1]} { exit 0 }
+		send -- "\r"
+		set f [open "$dir/typed" w]
+		puts $f [clock milliseconds]
+		close $f
+	}
+	if {[drain 1]} { exit 0 }
+}
+send -- "\x03"
+drain 1
+send -- "\x03"
+drain 1
+send -- "\x04"
+set timeout 15
+expect eof {} timeout {}
+exit 0

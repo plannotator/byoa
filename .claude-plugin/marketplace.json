@@ -1,0 +1,12 @@
+{
+  "name": "byoa",
+  "owner": { "name": "Plannotator" },
+  "metadata": { "description": "The BYOA connector for Claude Code." },
+  "plugins": [
+    {
+      "name": "byoa",
+      "source": "./connectors/claude-code",
+      "description": "Bring Your Own Agent: lets web apps you pair use this Claude Code session as their agent."
+    }
+  ]
+}

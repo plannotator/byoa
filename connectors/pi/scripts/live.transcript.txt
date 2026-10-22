@@ -1,0 +1,52 @@
+# @byoa/pi live proof
+run at 2026-10-21T21:47:59.354Z
+pi 0.85.1 (<global node_modules>/@earendil-works/pi-coding-agent/dist/bundle/cli.js), extension <repo>/connectors/pi/src/index.ts, HOME /tmp/byoa-pioc/pi/home
+PASS 1. /byoa connect both apps
+     screen: "connected to Notes ... as Ramos", "connected to Tasks ... as Ramos"
+     credential files 0600, 0600 in a 0700 folder
+     after /new: Notes session ses_fSflvhbg8v_lFgOpjNlgVY4z (ready), Tasks session ses_8xUTSSfGBNbXhghLh4SkJnHg (ready); workspace sent: {"folder_name":"northstar","git_remote":"github.com/acme/northstar"}; settings: model=echo/echo-1, effort=off
+PASS 2-3. a message through the UI door, and its SSE sequence
+     msg_DBdLoF9xU2TfBIuivD4CaQ: accepted → started → delta → done; answer text "ECHO: hello from the Notes chat"
+     Pi's screen shows "[BYOA] Notes (localhost:4300) · chat from Ramos · msg_DBdLoF9xU2TfBIuivD4CaQ"
+PASS 4. the proxied tool (the echo model calls `notes` add_note)
+     msg_xjVDRXx76Dl3Nn9j5lsyoA: accepted → started → tool:notes → delta → done
+     GET /api/activity → notes: {"text":"a note from Pi through BYOA","session":"ses_fSflvhbg8v_lFgOpjNlgVY4z","at":"2026-10-21T21:48:10.863Z"}
+PASS 5a. two apps' messages run one after the other
+     Tasks msg_dgyG61EBxz36vDbKKwRYfQ: accepted → started → delta → done
+     Notes msg_YQlflun9WEyJDKnTrKjyJA: accepted → queued → started → delta → done
+     Notes started 1286 ms after Tasks' done
+PASS 5b. interrupt stops our turn
+     msg_czk3mvNxvdJa9HCUdRB5rA: interrupt door → interrupt_sent; accepted → started → delta → interrupted:stopped
+PASS /byoa status in the TUI
+     screen shows "Notes (http://localhost:4300) · connected as Ramos · this session: registered" (and Tasks)
+PASS stand-down: `pi -p` with both credentials on disk registers nothing
+     pi -p exited 0, printed "ECHO: say hello"; sessions listed in the two apps: 4 before, 4 after
+
+ALL PASSED; the pty log is /tmp/byoa-pioc/pi/tty.log
+
+----- the same driver against Pi 1.3.0 (PI_BIN=/tmp/byoa-pioc/pkgs/pi/node_modules/.bin/pi) -----
+# @byoa/pi live proof
+run at 2026-10-21T21:47:17.885Z
+pi 1.3.0 (/private/tmp/byoa-pioc/pkgs/pi/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js), extension <repo>/connectors/pi/src/index.ts, HOME /tmp/byoa-pioc/pi/home
+PASS 1. /byoa connect both apps
+     screen: "connected to Notes ... as Ramos", "connected to Tasks ... as Ramos"
+     credential files 0600, 0600 in a 0700 folder
+     after /new: Notes session ses_o1q7dLbaxaFsvrpJD7LxXqru (ready), Tasks session ses_hPIDnS9raIaDCt4e1cugIvgs (ready); workspace sent: {"folder_name":"northstar","git_remote":"github.com/acme/northstar"}; settings: model=echo/echo-1, effort=off
+PASS 2-3. a message through the UI door, and its SSE sequence
+     msg_XxPTUBhozMcBXcPINS1tHA: accepted → started → delta → done; answer text "ECHO: hello from the Notes chat"
+     Pi's screen shows "[BYOA] Notes (localhost:4300) · chat from Ramos · msg_XxPTUBhozMcBXcPINS1tHA"
+PASS 4. the proxied tool (the echo model calls `notes` add_note)
+     msg_6tWYXQs5_FTns7jMgENVJw: accepted → started → tool:notes → delta → done
+     GET /api/activity → notes: {"text":"a note from Pi through BYOA","session":"ses_o1q7dLbaxaFsvrpJD7LxXqru","at":"2026-10-21T21:47:28.515Z"}
+PASS 5a. two apps' messages run one after the other
+     Tasks msg_rBe3NVG5kBcc0L6KRIfgjw: accepted → started → delta → done
+     Notes msg_yKtMSLWw1-N7GsX0MWAWYA: accepted → queued → started → delta → done
+     Notes started 1292 ms after Tasks' done
+PASS 5b. interrupt stops our turn
+     msg_UgZvyNMc8iKNOcGGPb0H7w: interrupt door → interrupt_sent; accepted → started → delta → interrupted:stopped
+PASS /byoa status in the TUI
+     screen shows "Notes (http://localhost:4300) · connected as Ramos · this session: registered" (and Tasks)
+PASS stand-down: `pi -p` with both credentials on disk registers nothing
+     pi -p exited 0, printed "ECHO: say hello"; sessions listed in the two apps: 4 before, 4 after
+
+ALL PASSED; the pty log is /tmp/byoa-pioc/pi/tty.log

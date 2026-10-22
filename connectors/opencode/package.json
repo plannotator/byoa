@@ -1,0 +1,55 @@
+{
+  "name": "@plannotator/byoa-opencode",
+  "version": "0.1.0",
+  "description": "The BYOA connector for OpenCode 2: connects your running OpenCode sessions to every BYOA app you pair with /byoa connect.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plannotator/byoa.git",
+    "directory": "connectors/opencode"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": "./server.ts",
+    "./server": "./server.ts",
+    "./tui": "./tui.ts"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "scripts": {
+    "build": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+    "prepack": "pnpm --filter @plannotator/byoa-opencode... run build",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc -p .",
+    "live": "node scripts/live.ts"
+  },
+  "dependencies": {
+    "@plannotator/byoa-connector-core": "workspace:*",
+    "@plannotator/byoa-protocol": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
+      },
+      "./server": {
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
+      },
+      "./tui": {
+        "types": "./dist/tui.d.ts",
+        "default": "./dist/tui.js"
+      }
+    }
+  }
+}

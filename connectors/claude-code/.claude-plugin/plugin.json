@@ -1,0 +1,10 @@
+{
+  "name": "byoa",
+  "version": "0.1.0",
+  "description": "Bring Your Own Agent: lets web apps you pair use this Claude Code session as their agent. /byoa connect <app>. Never answers permission prompts.",
+  "author": { "name": "Plannotator" },
+  "homepage": "https://github.com/plannotator/byoa",
+  "repository": "https://github.com/plannotator/byoa",
+  "license": "MIT OR Apache-2.0",
+  "keywords": ["byoa", "agents", "mcp"]
+}

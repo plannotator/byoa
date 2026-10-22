@@ -1,0 +1,21 @@
+# @byoa/opencode live proof
+run at 2026-10-21T21:46:20.345Z
+opencode v2.1.2 (/tmp/byoa-pioc/pkgs/opencode/node_modules/.bin/opencode2), plugin <repo>/connectors/opencode, HOME /tmp/byoa-pioc/opencode/home
+PASS 1. /byoa connect both apps
+     credential files 0600, 0600 in a 0700 folder
+     after a restart and a first prompt: Notes session ses_dqPvfoZUBQn_6Nt9oS3x99GJ (ready), Tasks session ses_bYOBDdlzFBTySWU_apK-FCgG (ready); workspace sent: {"folder_name":"northstar","git_remote":"github.com/acme/northstar"}; settings: model=echo/echo-1
+PASS 2-3. a message through the UI door, and its SSE sequence
+     msg_-Slxw_fthYwa-tDz2yLY7g: accepted → started → delta → done; answer text "ECHO: hello from the Notes chat"
+PASS 4. the proxied tool (the echo model calls `notes` add_note)
+     msg_AZpPpaBIb0XnhY9YDs_oyA: accepted → started → tool:notes → delta → done
+     GET /api/activity → notes: {"text":"a note from OpenCode through BYOA","session":"ses_dqPvfoZUBQn_6Nt9oS3x99GJ","at":"2026-10-21T21:46:45.666Z"}
+PASS 5a. two apps' messages run one after the other
+     Tasks msg_NaTCwBsqnBjRV1bYCJiXww: accepted → started → delta → done
+     Notes msg_xU--xHnRnEFvi5GBUzaFKA: accepted → queued → started → delta → done
+     Notes started 1225 ms after Tasks' done
+PASS 5b. interrupt stops our turn
+     msg_Gfi4Ggg6eGfGf1CTx2mpkw: interrupt door → interrupt_sent; accepted → started → delta → interrupted:stopped
+PASS stand-down: `opencode2 run --standalone` with both credentials on disk registers nothing
+     opencode2 run exited 0, printed "ECHO: "say hello""; sessions listed in the two apps: 2 before, 2 after
+
+ALL PASSED; the pty log is /tmp/byoa-pioc/opencode/second/tty.log

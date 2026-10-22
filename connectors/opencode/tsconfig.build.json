@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "noEmit": false,
+    "noEmitOnError": true,
+    "declaration": true,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": ".",
+    "outDir": "dist",
+    "paths": {
+      "@plannotator/byoa-protocol": ["../../packages/protocol/dist/index.d.ts"],
+      "@plannotator/byoa-connector-core": ["../../packages/connector-core/dist/index.d.ts"]
+    }
+  },
+  "include": ["server.ts", "tui.ts", "src"]
+}

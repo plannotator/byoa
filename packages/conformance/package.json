@@ -1,0 +1,8 @@
+{
+  "name": "@plannotator/byoa-conformance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "description": "The real @plannotator/byoa-server and the real @plannotator/byoa-connector-core over the wire, with a fake host. The check that both ends speak the same protocol."
+}

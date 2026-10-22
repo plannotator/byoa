@@ -1,0 +1,10 @@
+{
+  "name": "@plannotator/byoa-example-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "description": "A tiny BYOA app: one signed-in person, a notes MCP server, and a chat page that talks to your own agent.",
+  "scripts": { "start": "node src/server.ts" },
+  "dependencies": { "@plannotator/byoa-server": "workspace:*", "@plannotator/byoa-protocol": "workspace:*" }
+}

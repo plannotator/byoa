@@ -1,0 +1,14 @@
+{
+  "name": "@plannotator/byoa-claude-code",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "description": "The BYOA connector for Claude Code: a hooks-module plugin named byoa.",
+  "scripts": {
+    "sync": "node scripts/sync-core.mjs",
+    "test": "node --test tests/node/*.test.mjs && claude plugin test . && claude plugin validate --strict .",
+    "typecheck": "tsc -p .",
+    "live": "cd ../.. && python3 connectors/claude-code/scripts/live.py"
+  }
+}
