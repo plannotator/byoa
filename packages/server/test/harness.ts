@@ -120,3 +120,38 @@ export async function pending(promise: Promise<unknown>): Promise<boolean> {
 	await settle();
 	return (await Promise.race([promise, Promise.resolve(marker)])) === marker;
 }
+
+/** Read SSE frames off a stream as they come. `ended()` is true once the
+ * server closed the stream. */
+export function sseReader(response: Response) {
+	const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+	let ended = false;
+	const frames: string[] = [];
+	(async () => {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) {
+				ended = true;
+				return;
+			}
+			buffer += decoder.decode(value, { stream: true });
+			let end = buffer.indexOf("\n\n");
+			while (end >= 0) {
+				frames.push(buffer.slice(0, end));
+				buffer = buffer.slice(end + 2);
+				end = buffer.indexOf("\n\n");
+			}
+		}
+	})();
+	return {
+		frames,
+		ended: () => ended,
+		events: () =>
+			frames
+				.filter((f) => f.startsWith("event: "))
+				.map((f) => ({ type: /^event: (\w+)/.exec(f)?.[1], data: JSON.parse(f.slice(f.indexOf("data: ") + 6)) })),
+		cancel: () => reader.cancel(),
+	};
+}

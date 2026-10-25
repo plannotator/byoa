@@ -3,9 +3,10 @@
 // CSRF check, and every one refuses a request that carries Authorization at
 // all, so no token (a connection's own included) can start a turn (SPEC 9.1).
 // The events door is a thin SSE wrapper over subscribe(): one stream per
-// tab carrying the session list and every message's events.
+// tab carrying the session list and every message's events. The send door
+// may hand its body to the app's prepareSend, which writes the turn's text.
 
-import { KNOBS } from "@plannotator/byoa-protocol";
+import { isRecord, KNOBS } from "@plannotator/byoa-protocol";
 import type { Ctx } from "./context.ts";
 import { json, noContent, readJson, unauthorized, wireError } from "./http.ts";
 import { parseSend } from "./send.ts";
@@ -55,7 +56,9 @@ export function eventStream(ctx: Ctx, userId: string): Response {
 					if (!closed) timer = ctx.clock.setTimeout(tick, KEEP_ALIVE_MS);
 				};
 				timer = ctx.clock.setTimeout(tick, KEEP_ALIVE_MS);
-				const off = ctx.subscribe(userId, (event) => write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`));
+				// The hub ended this subscription: close cleanly, so the browser's
+				// EventSource reconnects and gets a fresh session list.
+				const off = ctx.subscribe(userId, (event) => write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`), () => close());
 				if (closed) off();
 				else unsubscribe = off;
 			},
@@ -77,7 +80,18 @@ export async function listSessions(ctx: Ctx, user: ByoaUser): Promise<Response> 
 export async function sendMessage(ctx: Ctx, req: Request, user: ByoaUser, sessionId: string): Promise<Response> {
 	const body = await readJson(req, 128 * 1024);
 	if (body instanceof Response) return body;
-	const parsed = parseSend(body.value, { kind: "chat", from: user.displayName });
+	let message = body.value;
+	let from = user.displayName;
+	if (ctx.prepareSend !== undefined) {
+		// A throw here reaches byoa.handle: onError, then 500.
+		const prepared = await ctx.prepareSend({ userId: user.userId, displayName: user.displayName, sessionId, body: body.value, req });
+		if (prepared instanceof Response) return prepared;
+		if (!isRecord(prepared)) throw new Error("byoa: prepareSend must return a PreparedSend or a Response");
+		if (prepared.from !== undefined && typeof prepared.from !== "string") return wireError(422, "validation_error", "from: a display name");
+		message = { text: prepared.text, kind: prepared.kind, interrupt_first: prepared.interruptFirst, stream: prepared.stream, set: prepared.set };
+		from = prepared.from ?? user.displayName;
+	}
+	const parsed = parseSend(message, { kind: "chat", from });
 	if (!parsed.ok) return wireError(422, "validation_error", parsed.reason);
 	const outcome = await ctx.hub(user.userId).send(sessionId, parsed.value);
 	if (outcome.kind === "refused") return wireError(outcome.status, outcome.error, outcome.description);

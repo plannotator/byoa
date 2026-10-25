@@ -226,7 +226,8 @@ export class SessionHub implements Hub {
 		if (dropped) this.#emit({ type: "sessions_changed" });
 	}
 
-	subscribe(listener: (event: HubEvent) => void): () => void {
+	/** In memory, delivery never fails, so `onEnd` is never called. */
+	subscribe(listener: (event: HubEvent) => void, _onEnd?: () => void): () => void {
 		this.#listeners.add(listener);
 		const replay: HubEvent[] = [{ type: "sessions_changed" }];
 		for (const session of this.#sessions.values()) for (const message of session.messages.values()) replay.push(...message.log);

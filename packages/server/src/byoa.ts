@@ -12,7 +12,7 @@ import { memoryStore } from "./memory-store.ts";
 import { connectDecide, connectPage, pairPoll, pairStart } from "./pairing.ts";
 import { parseSend } from "./send.ts";
 import type { HubConfig } from "./store.ts";
-import type { Byoa, ByoaLimits, ByoaOptions, Clock, HubEvent, UiConnection, UiEvent } from "./types.ts";
+import type { Awaitable, Byoa, ByoaLimits, ByoaOptions, Clock, HubEvent, UiConnection, UiEvent } from "./types.ts";
 import * as ui from "./ui.ts";
 
 const DEFAULT_LIMITS: ByoaLimits = { sessionsPerConnection: 64, bufferedEventsPerMessage: 4096, seqLookAhead: 256 };
@@ -69,8 +69,10 @@ export function createByoa(options: ByoaOptions): Byoa {
 	}
 
 	/** The hub's events in order, with each list-changed signal turned into
-	 * the list itself (it needs the durable connections, an async read). */
-	function subscribe(userId: string, listener: (event: UiEvent) => void): () => void {
+	 * the list itself (it needs the durable connections, an async read).
+	 * When the hub ends the subscription, or fails to make it, `onEnd` runs
+	 * once, after the events already on their way. */
+	function subscribe(userId: string, listener: (event: UiEvent) => void, onEnd?: () => void): () => void {
 		let closed = false;
 		let off: (() => void) | null = null;
 		let chain = Promise.resolve();
@@ -83,10 +85,26 @@ export function createByoa(options: ByoaOptions): Byoa {
 				})
 				.catch(() => undefined);
 		};
-		void Promise.resolve(hub(userId).subscribe(forward)).then((unsubscribe) => {
+		const ended = () => {
+			chain = chain
+				.then(() => {
+					if (closed) return;
+					closed = true;
+					off?.();
+					onEnd?.();
+				})
+				.catch(() => undefined);
+		};
+		let subscribed: Awaitable<() => void>;
+		try {
+			subscribed = hub(userId).subscribe(forward, ended);
+		} catch (error) {
+			subscribed = Promise.reject(error);
+		}
+		void Promise.resolve(subscribed).then((unsubscribe) => {
 			if (closed) unsubscribe();
 			else off = unsubscribe;
-		});
+		}, ended);
 		return () => {
 			closed = true;
 			off?.();
@@ -105,7 +123,39 @@ export function createByoa(options: ByoaOptions): Byoa {
 		return connection !== null && connection.revoked_at === null ? connection : null;
 	}
 
-	const ctx: Ctx = { app: options.app, base, store, clock, pollHoldSeconds, autoApprove: options.autoApprove, renderPage: options.renderPage, authenticate: options.authenticate, checkCsrf, hub, connectionOf, revoke, sessions, subscribe };
+	/** Never the request's body or headers: they may hold a token or a code.
+	 * The app's own onError gets its own request object, and nothing more. */
+	function reportError(error: unknown, req: Request): void {
+		if (options.onError === undefined) {
+			console.error("byoa: door failed", error instanceof Error ? error.message : error);
+			return;
+		}
+		try {
+			options.onError(error, req);
+		} catch {
+			// The app's handler failed; the answer still goes out.
+		}
+	}
+
+	const ctx: Ctx = {
+		app: options.app,
+		base,
+		store,
+		clock,
+		pollHoldSeconds,
+		autoApprove: options.autoApprove,
+		renderPage: options.renderPage,
+		prepareSend: options.prepareSend,
+		onRegistered: options.onRegistered,
+		reportError,
+		authenticate: options.authenticate,
+		checkCsrf,
+		hub,
+		connectionOf,
+		revoke,
+		sessions,
+		subscribe,
+	};
 
 	const discovery: Discovery = {
 		byoa: BYOA_VERSION,
@@ -189,8 +239,7 @@ export function createByoa(options: ByoaOptions): Byoa {
 			try {
 				return await route(req);
 			} catch (error) {
-				// Never the request: it may hold a token or a code.
-				console.error("byoa: door failed", error instanceof Error ? error.message : error);
+				reportError(error, req);
 				return wireError(500, "server_error", "Something failed on the app's side.");
 			}
 		},

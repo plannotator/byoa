@@ -58,6 +58,47 @@ export interface ByoaOptions {
 	 * security headers gets the missing ones added; a header you set is kept.
 	 * Read the rules on ApprovalPage first. */
 	renderPage?: (page: ApprovalPage, req: Request) => Response | null | undefined | Promise<Response | null | undefined>;
+	/** Write the turn's text on the server for `POST <base>/ui/sessions/{id}/messages`.
+	 * It runs after every check the door makes (the person's session, CSRF, no
+	 * bearer, the size limit, the JSON parse) and gets the parsed body, not
+	 * validated beyond being JSON. Return a PreparedSend, which is checked
+	 * and sent under the door's usual rules, or a Response to send as is.
+	 * The app owns the text: only the person's own words and ids, never
+	 * content other people wrote (SPEC 5.3). Without it the door reads
+	 * `{ text, kind?, interrupt_first?, stream?, set? }`. */
+	prepareSend?: (input: PrepareSendInput) => PreparedSend | Response | Promise<PreparedSend | Response>;
+	/** Called with every caught failure before the 500 answer: a door that
+	 * threw, and a throw in `renderPage`, `prepareSend` or `onRegistered`.
+	 * `req` is the request that failed, the app's own object; nothing else
+	 * of it leaves the SDK. A throw inside it is caught and ignored. Without
+	 * it the SDK writes the error's message with console.error. */
+	onError?: (error: unknown, req: Request) => void;
+	/** Called after the hub accepts a register, a re-register included, with
+	 * the session as `sessions()` shows it. The register answer is decided
+	 * first and waits for it, so keep it quick; a throw goes to `onError`
+	 * and never fails the register. */
+	onRegistered?: (userId: string, session: UiSession) => void | Promise<void>;
+}
+
+/** What `prepareSend` gets: the signed-in person, the session in the path,
+ * the parsed JSON body, and the request. */
+export interface PrepareSendInput {
+	userId: string;
+	displayName: string;
+	sessionId: string;
+	body: unknown;
+	req: Request;
+}
+
+/** The message `prepareSend` returns, in `byoa.send`'s shape. `kind`
+ * defaults to "chat", as at the UI door, and `from` to the person's name. */
+export interface PreparedSend {
+	text: string;
+	kind?: MessageKind;
+	interruptFirst?: boolean;
+	stream?: boolean;
+	set?: Record<string, string>;
+	from?: string;
 }
 
 /** The form fields the POST door reads, and the values `decision` takes. */
@@ -180,8 +221,9 @@ export interface Byoa {
 	interrupt(userId: string, sessionId: string, messageId: string): Promise<InterruptOutcome | null>;
 	sessions(userId: string): Promise<UiConnection[]>;
 	/** The events the UI stream carries: first the session list and every open
-	 * message so far, then live. */
-	subscribe(userId: string, listener: (event: UiEvent) => void): () => void;
+	 * message so far, then live. `onEnd` is called once if the hub can no
+	 * longer deliver (see Hub.subscribe); subscribe again for a fresh list. */
+	subscribe(userId: string, listener: (event: UiEvent) => void, onEnd?: () => void): () => void;
 	/** For the app's own MCP server: accept a BYOA connection token. Pass the
 	 * `_meta["dev.byoa/session"]` value to have it checked against the connection. */
 	verifyBearer(req: Request, opts?: { sessionId?: string }): Promise<BearerIdentity | null>;

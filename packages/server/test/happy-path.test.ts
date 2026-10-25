@@ -4,36 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { body, makeApp, pending, settle } from "./harness.ts";
-
-/** Read SSE frames off a stream as they come. */
-function sseReader(response: Response) {
-	const reader = (response.body as ReadableStream<Uint8Array>).getReader();
-	const decoder = new TextDecoder();
-	let buffer = "";
-	const frames: string[] = [];
-	(async () => {
-		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) return;
-			buffer += decoder.decode(value, { stream: true });
-			let end = buffer.indexOf("\n\n");
-			while (end >= 0) {
-				frames.push(buffer.slice(0, end));
-				buffer = buffer.slice(end + 2);
-				end = buffer.indexOf("\n\n");
-			}
-		}
-	})();
-	return {
-		frames,
-		events: () =>
-			frames
-				.filter((f) => f.startsWith("event: "))
-				.map((f) => ({ type: /^event: (\w+)/.exec(f)?.[1], data: JSON.parse(f.slice(f.indexOf("data: ") + 6)) })),
-		cancel: () => reader.cancel(),
-	};
-}
+import { body, makeApp, pending, settle, sseReader } from "./harness.ts";
 
 test("pair, register, send, poll, stream events to the UI in order", async () => {
 	const app = makeApp({ mcpPath: "/mcp" });

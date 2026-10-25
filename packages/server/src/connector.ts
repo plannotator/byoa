@@ -14,18 +14,27 @@ export const MINIMUM_CONNECTOR_VERSION = "0.1.0";
 /** last_seen_at is written at register and at most this often on poll, so a
  * polling session costs one durable write a minute, not one per poll. */
 const TOUCH_EVERY_MS = 60_000;
-const touched = new WeakMap<Ctx, Map<string, number>>();
+/** Past this many entries, the ones older than TOUCH_EVERY_MS are dropped. */
+const TOUCHED_PRUNE_AT = 4096;
+// Keyed by app origin and connection id, not by ctx or store: an app may build createByoa and its store per request.
+const touched = new Map<string, number>();
 
 export function refuseBrowser(req: Request): Response | null {
 	return req.headers.has("origin") ? wireError(403, "forbidden", "Connector doors do not take browser requests.") : null;
 }
 
 async function touch(ctx: Ctx, connectionId: string, force: boolean): Promise<void> {
-	let seen = touched.get(ctx);
-	if (seen === undefined) touched.set(ctx, (seen = new Map()));
+	const key = `${ctx.app.origin} ${connectionId}`;
 	const now = ctx.clock.now();
-	if (!force && now - (seen.get(connectionId) ?? -Infinity) < TOUCH_EVERY_MS) return;
-	seen.set(connectionId, now);
+	if (!force && now - (touched.get(key) ?? -Infinity) < TOUCH_EVERY_MS) return;
+	// Delete first, so the map stays in the order of the last touch.
+	touched.delete(key);
+	touched.set(key, now);
+	if (touched.size > TOUCHED_PRUNE_AT)
+		for (const [k, at] of touched) {
+			if (now - at < TOUCH_EVERY_MS) break;
+			touched.delete(k);
+		}
 	await ctx.store.connections.touch(connectionId, now);
 }
 
@@ -44,7 +53,20 @@ export async function register(ctx: Ctx, req: Request): Promise<Response> {
 		return wireError(429, "too_many_sessions", `This connection already has ${outcome.limit} live sessions.`);
 	await touch(ctx, connection.id, true);
 	const answer: RegisterResponse = { session: outcome.session, poll_hold_seconds: ctx.pollHoldSeconds, minimum_connector_version: MINIMUM_CONNECTOR_VERSION };
-	return json(answer);
+	// Serialised now, so nothing the hook does can change the answer.
+	const response = json(answer);
+	if (ctx.onRegistered !== undefined) {
+		// Awaited before answering, so it finishes on a runtime that may stop
+		// work once the answer is sent (Workers, where the SDK has no
+		// waitUntil). Its failure is the app's, never the connector's.
+		try {
+			// A copy: the hook must not reach into the hub's own state.
+			await ctx.onRegistered(connection.user_id, structuredClone({ ...outcome.session, machine_name: connection.machine_name }));
+		} catch (error) {
+			ctx.reportError(error, req);
+		}
+	}
+	return response;
 }
 
 export async function poll(ctx: Ctx, req: Request, sessionId: string): Promise<Response> {

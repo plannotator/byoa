@@ -98,7 +98,11 @@ export interface Hub {
 	interrupt(sessionId: string, messageId: string): Awaitable<InterruptOutcome | null>;
 	list(): Awaitable<SessionInfo[]>;
 	dropConnection(connectionId: string): Awaitable<void>;
-	subscribe(listener: (event: HubEvent) => void): Awaitable<() => void>;
+	/** Replays the session list signal and every open message, then live
+	 * events. Call `onEnd` when this subscription can no longer get events
+	 * (a Durable Object adapter whose event stream read failed after a
+	 * reset): the UI stream then closes and the browser reconnects. */
+	subscribe(listener: (event: HubEvent) => void, onEnd?: () => void): Awaitable<() => void>;
 }
 
 export interface ByoaStore {
