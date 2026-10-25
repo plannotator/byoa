@@ -238,7 +238,7 @@ describe('byoa session loop', () => {
   })
 
   // Catches: the answer to what the PERSON typed into an app's turn
-  // streaming to the app (Workspaces review B1).
+  // streaming to the app.
   test('a prompt typed into our turn: nothing more streams, and it ends interrupted, taken_over', async ($, on) => {
     const w = world(on)
     const chunks: Record<number, any[]> = {
@@ -263,7 +263,7 @@ describe('byoa session loop', () => {
 
   // Catches: text written after the person's Enter reaching the app, and
   // the finished answer lost when the turn ends before the typed prompt
-  // could join it (Workspaces finding 2).
+  // could join it.
   test('a prompt typed during the last step: nothing after the Enter streams, and the turn ends done', async ($, on) => {
     const w = world(on)
     const gate: { open: () => void } = { open: () => undefined }
@@ -291,7 +291,7 @@ describe('byoa session loop', () => {
   })
 
   // Catches: a background task reporting back ending our turn for no
-  // visible reason (Workspaces finding 3).
+  // visible reason.
   test("a background task's notification in our turn does not take it over", async ($, on) => {
     const w = world(on)
     const chunks: Record<number, any[]> = { 0: [{ kind: 'text', index: 0, text: 'started a build ' }], 1: [{ kind: 'text', index: 0, text: 'and it passed' }] }

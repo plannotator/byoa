@@ -143,7 +143,7 @@ The app mints the token when the poll collects it, not at approval, so the raw t
 
 - `404 session_not_found` means the app forgot the session, for example after a restart. The connector registers again.
 - A command can arrive twice when a poll answer was lost. The app SHOULD offer an unanswered message again after 30 s, and the connector MUST act on each `message_id` once.
-- **Two processes, one session.** `claude --continue` in a second terminal gives two processes the same `host_session_id`. The newest poll wins on the server, and a connector whose polls keep being superseded backs off from 1 to 30 s with jitter (Workspaces PR 2 and PR 3). Each message is handed to one poll. Exactly-once delivery across processes is not promised. A per-process lease and claim, as Plannotator has, is left for when a duplicate is actually seen (Machine and AppNotes reviews).
+- **Two processes, one session.** `claude --continue` in a second terminal gives two processes the same `host_session_id`. The newest poll wins on the server, and a connector whose polls keep being superseded backs off from 1 to 30 s with jitter. Each message is handed to one poll. Exactly-once delivery across processes is not promised. A per-process lease and claim, as Plannotator has, is left for when a duplicate is actually seen (Machine and AppNotes reviews).
 - **A gone session still takes messages.** A message sent to it waits on the app until the session polls again; its id is stable across restarts. Only a message a poll already took is ended `gone` when its session goes. The app may still withdraw a waiting message and offer it to another matching session (AppNotes). Machine asked for this so apps need not hold messages themselves.
 
 ### 5.3 Commands
@@ -170,7 +170,7 @@ The app mints the token when the poll collects it, not at approval, so the raw t
   - `notice`.
 
   The connector uses `kind` only for the provenance line; every kind becomes the same kind of turn.
-- `text` is composed by the app's server only, never by a browser. It MUST carry only the person's own words and ids, never content other people wrote: titles, paths, comment bodies, or a guest's note. The agent reads those through tools. The Workspaces PR 913 review found that a teammate-named document path could carry an injection.
+- `text` is composed by the app's server only, never by a browser. It MUST carry only the person's own words and ids, never content other people wrote: titles, paths, comment bodies, or a guest's note. The agent reads those through tools. Otherwise a document path a teammate named could carry an injection.
 - **Delivery is always when idle.** The connector holds the message until the host has been idle for two ticks (about 2 s), then starts a turn. It never puts a message into a running turn. The grace lets a prompt the person typed, or a `/clear`, go first. On Claude Code, `$.prompt.submit` cannot be taken back, so the message waits in the connector, not in the host's queue.
 - `interrupt_first` aborts the running turn first, but only if that turn was started by a message from this app. A connector never aborts the person's own turn or another app's. It needs `capabilities.interrupt`.
 - `stream` says whether to send `delta` events. When false, only lifecycle and `tool` events go back.
@@ -203,7 +203,7 @@ Each event is `{ message_id, seq, type, … }`. `seq` starts at 0 for each messa
 
 Exactly one of `done`, `error`, `interrupted` or `withdrawn` ends a message. An app ends its own view of a message from these events (plus the UI's `gone`), never from the session's busy/idle state: a message stopped while the connector still held it never starts a turn, so the session's state never changes (Machine, wiring Stop). The fixed `reason` phrases are listed in `EVENT_REASONS` in `packages/protocol/src/wire.ts`. A connector skips a command it cannot parse instead of failing the whole poll answer, because the app would offer it again forever.
 
-**What leaves the machine:** only events of turns that this app's messages started. Never another turn, never thinking, never a tool's input or output, and never a subagent's steps. A connector MUST stop streaming a turn once a prompt it did not submit joins it, and end the message `interrupted` with reason `taken_over`. The Workspaces extensions PR 2 review found a prompt the person typed into an app turn streaming its answer to the app.
+**What leaves the machine:** only events of turns that this app's messages started. Never another turn, never thinking, never a tool's input or output, and never a subagent's steps. A connector MUST stop streaming a turn once a prompt it did not submit joins it, and end the message `interrupted` with reason `taken_over`. Otherwise a prompt the person typed into an app turn would stream its answer to the app.
 
 ## 6. The turn the agent sees
 
@@ -225,7 +225,7 @@ The app's server writes the turn's text. The connector adds one line above it, w
 Tools stay MCP. BYOA adds no tool protocol.
 
 - If discovery lists `endpoints.mcp`, the connector registers **one proxied tool per app**, named after `app.id`. Its `action` enum is built from the app's `tools/list` once at session start. Calls go to the app's MCP endpoint with the connection token, which is sent only to that exact origin. This is what worked unchanged on Claude Code, Pi and OpenCode for Plannotator and Machine. It needs no host restart, and the tool list stays fixed for the session, which keeps the prompt cache stable. Claude Code cuts tool descriptions at 2,048 characters, so descriptions stay short.
-- One credential covers the doors and the tools, so the app can tie every tool call to the connection. Workspaces' risk 6 was two credentials in one session breaking run state.
+- One credential covers the doors and the tools, so the app can tie every tool call to the connection. Two credentials in one session can break run state.
 - On every `tools/call`, the connector sets `_meta["dev.byoa/session"]` to the session id. While a message's turn runs, it also sets `_meta["dev.byoa/message"]`, and always sets `_meta["dev.byoa/wakes"] = true`. With these, the app can tie a tool call to the message that caused it, and word its results as "end your turn; the answer arrives by itself".
 - A tool that returns content other people wrote SHOULD mark it as data, not instructions (AppNotes). The host's permission prompts don't cover reads.
 - Any app's tools may be used in any turn (owner's decision). The host's permission prompts are the control.
@@ -242,13 +242,13 @@ The browser never talks to the connector. These doors run between the app's own 
 
 ## 9. Security requirements
 
-1. **Only a person starts a turn.** An app creates a message only from an action by the paired person in their own signed-in session: typing in the chat, pressing Send on a hand-off, tagging their own agent, or answering a question. No bearer credential, no other person, and no scheduled automation can cause a message. The Workspaces PR 913 review made Start implementation launcher-only so a teammate could not push a turn.
+1. **Only a person starts a turn.** An app creates a message only from an action by the paired person in their own signed-in session: typing in the chat, pressing Send on a hand-off, tagging their own agent, or answering a question. No bearer credential, no other person, and no scheduled automation can cause a message.
 2. **No loops.** A connection token can never send a message, so no agent can start a turn in its own session or anyone else's.
 3. **Frames, not content** (5.3 `text`).
 4. **The host's permission prompts are the control.** A connector never answers a permission prompt and never hooks the host's permission check. A session that runs without prompts acts on whatever it reads, and connector setup says so. Pi asks no permission by default.
 5. **Sharing.** The person chooses, per app, which `workspace` fields are sent. The connector enforces it, and the app cannot widen it. This is the only connector setting in 0.1.
 6. **Several apps, one session.** A connector runs one app turn at a time per session, in arrival order across apps. It attributes a take-over or an interrupt to the app whose turn it was. Each session's tool list is fixed at session start: an app paired mid-session can start turns at once, but its tool arrives with the next session.
-7. **Bounded resources.** The app bounds sessions per connection, events per request, buffered events per message, and how far ahead `seq` may run. The Workspaces PR 916 review found that one key could fill its owner's memory.
+7. **Bounded resources.** The app bounds sessions per connection, events per request, buffered events per message, and how far ahead `seq` may run. Without bounds, one key could fill its owner's memory.
 8. **Credentials.** Tokens live in a 0600 file in a 0700 folder, one per origin, written atomically. They never go in a host's plain settings store; Claude Code's `$.store` is 0644. A token is sent only to the exact origin it was paired with, and never follows a redirect to another origin.
 9. **Pairing phishing.** A person talked into approving someone else's code connects that someone's agent to their account. The controls are the approval page's wording, the code's age, and a connection list that is always visible, with Disconnect. In the reverse case, the person's own code approved on someone else's account, two things show it: the connector prints the account name after pairing, and every turn's first line names the asking person.
 
