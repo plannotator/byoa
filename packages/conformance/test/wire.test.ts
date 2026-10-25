@@ -1,15 +1,16 @@
 // Conformance: the real @plannotator/byoa-server and the real @plannotator/byoa-connector-core,
 // talking over the wire with nothing faked between them. Only the host is a
 // fake (scripted busy/idle and turn events), and requests go to the server's
-// fetch handler in-process instead of a socket. Each test is a SPEC rule seen
+// fetch handler in-process instead of a socket. The fake host, the files, the
+// HttpPort over fetch and the page pairing are the published test kit,
+// @plannotator/byoa-connector-core/testing. Each test is a SPEC rule seen
 // from both ends at once: what the person's UI sees and what the agent gets.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createByoa, type Byoa, type UiEvent } from "../../server/src/index.ts";
-import { Connector } from "../../connector-core/src/connector.ts";
-import type { HttpPort } from "../../connector-core/src/ports.ts";
-import { FakeHost, FakeSessionHost, MemoryFiles, HOME } from "../../connector-core/test/fakes.ts";
+import { Connector, type HttpPort } from "@plannotator/byoa-connector-core";
+import { FakeHost, FakeSessionHost, fetchHttp, HOME, MemoryFiles, pairByPage, type FetchLike } from "@plannotator/byoa-connector-core/testing";
 import { META } from "../../protocol/src/index.ts";
 
 const PERSON = { userId: "u_ramos", displayName: "Ramos" };
@@ -57,15 +58,19 @@ async function mcp(app: App, req: Request): Promise<Response> {
 	return reply({ content: [{ type: "text", text: "saved" }] });
 }
 
+/** The apps as one fetch function: each origin's BYOA handler and MCP server. */
+function fetcher(apps: App[]): FetchLike {
+	return async (url, init) => {
+		const app = apps.find((a) => url.startsWith(a.origin));
+		if (!app) throw new Error(`no route to ${url}`);
+		const req = new Request(url, init);
+		return new URL(url).pathname === "/mcp" ? await mcp(app, req) : ((await app.byoa.handle(req)) ?? new Response("nf", { status: 404 }));
+	};
+}
+
 /** The connector's HttpPort, routed to the apps' fetch handlers. */
 function network(apps: App[]): HttpPort {
-	return async (r) => {
-		const app = apps.find((a) => r.url.startsWith(a.origin));
-		if (!app) throw new Error(`no route to ${r.url}`);
-		const req = new Request(r.url, { method: r.method, headers: r.headers, ...(r.body !== undefined ? { body: r.body } : {}) });
-		const res = new URL(r.url).pathname === "/mcp" ? await mcp(app, req) : ((await app.byoa.handle(req)) ?? new Response("nf", { status: 404 }));
-		return { status: res.status, text: await res.text(), headers: Object.fromEntries(res.headers) };
-	};
+	return fetchHttp(fetcher(apps));
 }
 
 /** The person's browser on the app. */
@@ -108,34 +113,14 @@ function eventsFor(app: App, messageId: string): string[] {
 	return app.events.flatMap((e) => (e.type === "event" && e.message_id === messageId ? [e.event.type] : e.type === "gone" && e.message_id === messageId ? [`gone:${e.reason}`] : []));
 }
 
-async function pairByPage(app: App, connector: Connector, step: () => Promise<void>) {
-	const said = await connector.connect(app.origin);
-	const code = /[BCDFGHJKLMNPQRSTVWXZ]{4}-[BCDFGHJKLMNPQRSTVWXZ]{4}/.exec(said)?.[0];
-	assert.ok(code, `the connector shows a code: ${said}`);
-	const page = await (await ui(app, "GET", `/byoa/connect?code=${code}`)).text();
-	assert.match(page, /can start turns in that agent's sessions/);
-	const csrf = /name="csrf" value="([^"]+)"/.exec(page)?.[1];
-	assert.ok(csrf);
-	const res = await app.byoa.handle(
-		new Request(`${app.origin}/byoa/connect`, {
-			method: "POST",
-			headers: { cookie: COOKIE, origin: app.origin, "content-type": "application/x-www-form-urlencoded" },
-			body: new URLSearchParams({ code, csrf, decision: "connect" }).toString(),
-		}),
-	);
-	assert.match(await res!.text(), /Connected/);
-	for (let i = 0; i < 20 && !/as Ramos/.test(await connector.status()); i++) {
-		await step();
-		await connector.settled();
-	}
-	assert.match(await connector.status(), /as Ramos/);
-}
-
 test("pair through the approval page, register, chat: the UI sees the turn stream in order", async () => {
 	const notes = makeApp("notes", 4100);
 	const w = await setup([notes]);
-	await pairByPage(notes, w.connector, w.step);
-	const handle = w.connector.attach(w.session);
+	const page = await (await ui(notes, "GET", "/byoa/connect")).text();
+	assert.doesNotMatch(page, /csrf/, "no code, no consent form");
+	const status = await pairByPage({ connector: w.connector, origin: notes.origin, request: fetcher([notes]), headers: { cookie: COOKIE }, step: w.step });
+	assert.match(status, /as Ramos/);
+	const handle = w.session.attachTo(w.connector);
 	await w.until("session listed in the UI", () => sessionsOf(notes).some((s) => s.state === "ready"));
 	const sessionId = sessionsOf(notes)[0]!.id;
 	assert.deepEqual(sessionsOf(notes)[0]!.workspace, { folder_name: "northstar", git_remote: "github.com/acme/northstar" }, "path and branch are not shared by default");
@@ -145,11 +130,12 @@ test("pair through the approval page, register, chat: the UI sees the turn strea
 	const submitted = w.session.submitted[0]!;
 	assert.match(submitted, new RegExp(`^\\[BYOA\\] Notes \\(localhost:4100\\) · chat from Ramos · ${sent.message_id}\\nadd a note that says hi$`));
 
-	assert.equal(handle.turnStarted(`The byoa plugin sent a message:\n${submitted}`), true, "our turn is matched by contains");
-	handle.delta("Adding ");
-	handle.tool("add_note", "Add note");
-	handle.delta("done.");
-	handle.turnEnded("done");
+	assert.equal(w.session.startTurn(`The byoa plugin sent a message:\n${submitted}`), true, "our turn is matched by contains");
+	assert.equal(handle, w.session.handle);
+	w.session.text("Adding ");
+	w.session.tool("add_note", "Add note");
+	w.session.text("done.");
+	w.session.end("done");
 	await w.until("done reaches the UI", () => eventsFor(notes, sent.message_id).includes("done"));
 	assert.deepEqual(eventsFor(notes, sent.message_id), ["started", "delta", "tool", "delta", "done"]);
 	const text = notes.events.flatMap((e) => (e.type === "event" && e.event.type === "delta" ? [e.event.text] : [])).join("");

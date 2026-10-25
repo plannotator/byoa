@@ -9,8 +9,9 @@
 //     every time: whoever runs it can start turns in this agent.
 //   - App ids are unique across connected apps (they name tools and are
 //     typed after `disconnect`); a second app claiming a taken id is refused.
-//   - A 401 on any door stops that app everywhere and says so; nothing is
-//     deleted (the person reconnects, and the new token replaces the file).
+//   - A 401 on any door stops that app everywhere and says so. Only its
+//     tools cache is deleted: the person reconnects, and the new token
+//     replaces the credential file.
 //   - `disconnect` stops the app's links first, so no later request carries
 //     the token, then revokes it, then removes the file. If the app cannot be
 //     reached the token is still live, and the connector says so and keeps it.
@@ -31,6 +32,7 @@ import type { ClientInfo } from "./protocol.ts";
 import { AttachedSession, type ConnectedApp } from "./session.ts";
 import { policyPath, readSharing, withheld, type Sharing } from "./sharing.ts";
 import { text } from "./status.ts";
+import { toolsCachePath } from "./tools-cache.ts";
 import { CONNECTOR_NAME, CONNECTOR_VERSION } from "./version.ts";
 
 /** How often the sharing file is read again. */
@@ -115,6 +117,8 @@ export class Connector {
 			{
 				host: this.#d.host,
 				http: this.#d.http,
+				files: this.#d.files,
+				home: this.#d.home,
 				now: this.#d.now,
 				random: this.#random,
 				apps: () => [...this.#apps.values()].filter((a) => !a.revoked),
@@ -288,6 +292,7 @@ export class Connector {
 			return text.disconnectUnreachable(app.name, res.kind === "network" ? res.message : `it answered ${res.status}`);
 		}
 		await this.#d.files.remove(app.path);
+		await this.#removeToolsCache(app.origin);
 		this.#show();
 		return revoked ? text.disconnected(app.name, app.path) : text.disconnectedLocally(app.name, app.path);
 	}
@@ -346,7 +351,14 @@ export class Connector {
 		if (app === undefined || app.revoked) return;
 		app.revoked = true;
 		for (const session of this.#sessions) session.dropApp(appId);
+		// The credential stays (a reconnect replaces it); the tools cache goes.
+		this.#track(this.#removeToolsCache(app.origin));
 		this.#show({ text: text.revoked(app.name, app.origin), level: "warning" });
+	}
+
+	/** Never fails: a cache left behind is only a stale description. */
+	async #removeToolsCache(origin: string): Promise<void> {
+		await this.#d.files.remove(toolsCachePath(this.#d.home, this.#d.host.host, origin)).catch(() => undefined);
 	}
 
 	async #readSharing(): Promise<void> {

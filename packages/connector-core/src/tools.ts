@@ -2,7 +2,8 @@
 // the app's MCP tools, built from its `tools/list` once at session start
 // (Plannotator Inbox's and Machine's shape). The list stays fixed for the
 // session, which keeps the prompt cache stable; an app paired mid-session
-// reaches the next session.
+// reaches the next session. When tools/list fails, the last list the app
+// answered is used (tools-cache.ts).
 //   - Name: the app id, cut to the characters every host accepts.
 //   - Description: the app's name and origin, then one short line per
 //     action, within 2,048 characters (Claude Code cuts there).

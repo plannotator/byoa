@@ -1,7 +1,9 @@
 // The copy rule: connector-core is copied into a Claude Code mod, which can
 // import only its own folder and has no Node. So src imports nothing but its
 // own files, only src/protocol.ts imports @plannotator/byoa-protocol (by one line a sync
-// script rewrites), and no file uses a Node or web global.
+// script rewrites), and no file uses a Node or web global. src/testing.ts (the
+// published test kit) is not copied into the mod, but it keeps the same rules
+// so it runs in workerd and any test runner; the readdir below covers it.
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,4 +32,8 @@ test("src uses no Node or web global beyond URL and JSON", () => {
 		const hit = FORBIDDEN.exec(code);
 		assert.equal(hit, null, `${name} uses ${hit?.[0]}`);
 	}
+});
+
+test("the test kit is in src, so both rules above cover it", () => {
+	assert.ok(readdirSync(SRC).includes("testing.ts"));
 });

@@ -23,6 +23,9 @@ const SOURCES = [
 	{ from: "packages/protocol/src", to: "hooks/core/protocol" },
 	{ from: "packages/connector-core/src", to: "hooks/core/connector" },
 ];
+// The published test kit (@plannotator/byoa-connector-core/testing) is for
+// tests, not the mod, so it is not copied.
+const SKIP = new Set(["packages/connector-core/src/testing.ts"]);
 const NODE = /from\s+["']node:|\brequire\(|\bprocess\.|\bBuffer\b|\bfetch\(/;
 const check = process.argv.includes("--check");
 const problems = [];
@@ -31,7 +34,7 @@ for (const { from, to } of SOURCES) {
 	const src = join(REPO, from);
 	const dir = join(PLUGIN, to);
 	const want = new Map();
-	for (const name of readdirSync(src).filter((f) => f.endsWith(".ts")).sort()) {
+	for (const name of readdirSync(src).filter((f) => f.endsWith(".ts") && !SKIP.has(`${from}/${f}`)).sort()) {
 		let text = readFileSync(join(src, name), "utf8");
 		const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 		if (NODE.test(code)) problems.push(`${from}/${name} uses Node or global fetch; a Claude Code mod has neither.`);

@@ -15,11 +15,12 @@ import type { AppDiscovery } from "./discovery.ts";
 import type { HostAdapter, HostSession, ProxiedTool, SessionHandle } from "./host.ts";
 import { Link, type LinkState } from "./link.ts";
 import { McpClient, type McpTool } from "./mcp.ts";
-import type { Clock, HttpPort } from "./ports.ts";
+import type { Clock, FilePort, HttpPort } from "./ports.ts";
 import { META, type Command, type PollRequest, type RegisterRequest, type SessionSetting } from "./protocol.ts";
 import { sharedWorkspace, withheld, type Sharing } from "./sharing.ts";
 import { text } from "./status.ts";
 import { buildToolDefinition, toolCall } from "./tools.ts";
+import { readToolsCache, toolsCachePath, writeToolsCache } from "./tools-cache.ts";
 import { Turns } from "./turns.ts";
 import { CONNECTOR_VERSION } from "./version.ts";
 
@@ -35,6 +36,9 @@ export interface ConnectedApp {
 export interface SessionContext {
 	host: HostAdapter;
 	http: HttpPort;
+	files: FilePort;
+	/** The person's home folder, for the tools cache. */
+	home: string;
 	now: Clock;
 	random: () => number;
 	/** The apps a session may use now (connected, not revoked). */
@@ -59,6 +63,8 @@ export class AttachedSession implements SessionHandle {
 	#lastState = "";
 	#idleSince = "";
 	#tools: Promise<ProxiedTool[]> | null = null;
+	/** Apps whose tool this session built from the cache, with why. */
+	readonly #cachedTools = new Map<string, string>();
 	#detached = false;
 
 	constructor(context: SessionContext, host: HostSession) {
@@ -105,9 +111,11 @@ export class AttachedSession implements SessionHandle {
 		const link = this.#links.get(appId);
 		if (link === undefined) return null;
 		const s = link.state;
+		const cached = this.#cachedTools.get(appId);
+		const tools = cached === undefined ? "" : `; tools from cache (${shown(cached)})`;
 		if (s.kind === "live")
 			return text.sessionLine(
-				`registered${link.contended ? "; its polls are answered at once, as when the same session is open in another terminal too, so it polls less often" : ""}${s.updateNeeded ? "; the app asks for a newer connector" : ""}`,
+				`registered${tools}${link.contended ? "; its polls are answered at once, as when the same session is open in another terminal too, so it polls less often" : ""}${s.updateNeeded ? "; the app asks for a newer connector" : ""}`,
 			);
 		if (s.kind === "registering") return text.sessionLine("registering");
 		if (s.kind === "retrying") return text.sessionLine(`cannot reach the app (${shown(s.message)}), retrying`);
@@ -271,12 +279,8 @@ export class AttachedSession implements SessionHandle {
 		const listed = await Promise.all(
 			apps.map(async (app) => {
 				const client = new McpClient({ http: this.#c.http, origin: app.origin, url: app.discovery.endpoints.mcp as string, token: app.token });
-				try {
-					return { app, client, tools: await client.listTools() };
-				} catch (error) {
-					this.#c.warn(text.toolsFailed(app.name, error instanceof Error ? error.message : String(error)));
-					return null;
-				}
+				const tools = await this.#listTools(app, client);
+				return tools === null ? null : { app, client, tools };
 			}),
 		);
 		const out: ProxiedTool[] = [];
@@ -289,6 +293,31 @@ export class AttachedSession implements SessionHandle {
 			out.push({ ...def, call: (input) => this.#callTool(entry.app, entry.client, entry.tools, def.name, input) });
 		}
 		return out;
+	}
+
+	/** The app's tools/list, asked twice at most. On success the cache is
+	 * refreshed; on failure the cached list is used, and status says so;
+	 * with no cache the app has no tool in this session, as before. */
+	async #listTools(app: ConnectedApp, client: McpClient): Promise<McpTool[] | null> {
+		const path = toolsCachePath(this.#c.home, this.#c.host.host, app.origin);
+		let why = "";
+		for (let attempt = 0; attempt < 2; attempt++) {
+			try {
+				const tools = await client.listTools();
+				await writeToolsCache(this.#c.files, path, app.origin, tools, this.#c.now()).catch(() => undefined);
+				return tools;
+			} catch (error) {
+				why = error instanceof Error ? error.message : String(error);
+			}
+		}
+		const cached = await readToolsCache(this.#c.files, path, app.origin).catch(() => null);
+		if (cached === null) {
+			this.#c.warn(text.toolsFailed(app.name, why));
+			return null;
+		}
+		this.#cachedTools.set(app.id, why);
+		this.#c.warn(text.toolsFromCache(app.name, why));
+		return cached;
 	}
 
 	async #callTool(app: ConnectedApp, client: McpClient, tools: McpTool[], name: string, input: unknown): Promise<{ text: string; isError: boolean }> {

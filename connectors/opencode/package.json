@@ -1,6 +1,6 @@
 {
   "name": "@plannotator/byoa-opencode",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The BYOA connector for OpenCode 2: connects your running OpenCode sessions to every BYOA app you pair with /byoa connect.",
   "license": "MIT OR Apache-2.0",
   "repository": {
@@ -21,6 +21,7 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE-MIT",
     "LICENSE-APACHE"
   ],
@@ -32,8 +33,8 @@
     "live": "node scripts/live.ts"
   },
   "dependencies": {
-    "@plannotator/byoa-connector-core": "workspace:*",
-    "@plannotator/byoa-protocol": "workspace:*"
+    "@plannotator/byoa-connector-core": "workspace:^",
+    "@plannotator/byoa-protocol": "workspace:^"
   },
   "publishConfig": {
     "access": "public",

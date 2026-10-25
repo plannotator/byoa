@@ -1,11 +1,12 @@
 // The proxied tool: one per app, built from its tools/list at session start;
-// a call goes to that app's MCP endpoint with its own token and _meta.
+// a call goes to that app's MCP endpoint with its own token and _meta. When
+// the list fails, the last list the app answered is used from disk.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildToolDefinition, MAX_DESCRIPTION, toolCall } from "../src/tools.ts";
 import { jsonRpcMessage } from "../src/mcp.ts";
-import { app, FakeApp, world } from "./fakes.ts";
+import { app, FakeApp, FakeSessionHost, HOME, world } from "./fakes.ts";
 
 const SAY = { name: "say", description: "Put a note into the designer. Shown at once.", inputSchema: { type: "object", properties: { text: { type: "string", description: "The note." } } } };
 const DRAFT = { name: "draft_machine", description: "Draft a machine.", inputSchema: { type: "object", properties: { text: { type: "string" }, size: { type: "number" } } } };
@@ -86,4 +87,75 @@ test("an SSE body carries the JSON-RPC answer with the matching id", () => {
 	const sse = 'event: message\ndata: {"jsonrpc":"2.0","method":"notifications/progress"}\n\nevent: message\ndata: {"jsonrpc":"2.0","id":7,"result":{"ok":true}}\n\n';
 	assert.deepEqual(jsonRpcMessage(sse, "text/event-stream", 7), { result: { ok: true } });
 	assert.deepEqual(jsonRpcMessage('{"jsonrpc":"2.0","id":7,"error":{"message":"nope"}}', "application/json", 7), { error: "nope" });
+});
+
+// ── the tools cache ─────────────────────────────────────────────────────────
+
+const CACHE = `${HOME}/.byoa/tools/claude-code/https_workspaces.example.json`;
+
+const definition = (t: { name: string; description: string; inputSchema: Record<string, unknown> }) => JSON.stringify([t.name, t.description, t.inputSchema]);
+
+// Catches: a failed tools/list (an app deploy) leaving the session with no
+// tool, and a cached tool that differs from the fresh one (prompt cache).
+test("a listed tool refreshes the cache, 0600 in a 0700 folder; a failed list later uses it, byte for byte, and calls still reach the app", async () => {
+	const w = await world([WS]);
+	const [fresh] = await w.handle.tools();
+	assert.ok(fresh);
+	assert.equal(w.files.files.get(CACHE)?.mode, 0o600);
+	assert.equal(w.files.dirs.get(`${HOME}/.byoa/tools/claude-code`), 0o700);
+	assert.deepEqual(JSON.parse(w.files.files.get(CACHE)!.text).tools, WS.tools);
+
+	const ws = app(w.net, WS.origin);
+	ws.listFailures = Number.POSITIVE_INFINITY;
+	const next = w.connector.attach(new FakeSessionHost());
+	const [cached] = await next.tools();
+	assert.ok(cached);
+	assert.equal(definition(cached), definition(fresh));
+	assert.ok(w.host.toasts.some((t) => /tools from cache/.test(t) && /503|deploying/.test(t)), w.host.toasts.join("\n"));
+	await w.tick(2);
+	assert.match(await w.connector.status(), /tools from cache/);
+	assert.deepEqual(await cached.call({ action: "list_files" }), { text: "workspaces did list_files", isError: false });
+	assert.equal(ws.toolCalls.length, 1);
+});
+
+test("one quick retry: a list that fails once still comes fresh", async () => {
+	const w = await world([WS]);
+	app(w.net, WS.origin).listFailures = 1;
+	const tools = await w.handle.tools();
+	assert.deepEqual(tools.map((t) => t.name), ["workspaces"]);
+	assert.ok(!w.host.toasts.some((t) => /tools/.test(t)), w.host.toasts.join("\n"));
+	assert.ok(w.files.files.has(CACHE));
+});
+
+test("a failed list with no cache gives no tool for that app, and says so", async () => {
+	const w = await world([WS]);
+	app(w.net, WS.origin).listFailures = 2;
+	assert.deepEqual(await w.handle.tools(), []);
+	assert.ok(w.host.toasts.some((t) => /tools are not available in this session/.test(t)));
+	assert.equal(w.files.files.has(CACHE), false);
+});
+
+test("a cache file other users may write is not used", async () => {
+	const w = await world([WS]);
+	await w.handle.tools();
+	w.files.chmod(CACHE, 0o666);
+	app(w.net, WS.origin).listFailures = 2;
+	assert.deepEqual(await w.connector.attach(new FakeSessionHost()).tools(), []);
+});
+
+test("disconnect removes the cache with the credential, and so does a revoked token", async () => {
+	const w = await world([WS]);
+	await w.handle.tools();
+	assert.match(await w.connector.disconnect("workspaces"), /disconnected/);
+	assert.equal(w.files.files.has(CACHE), false);
+
+	const v = await world([WS]);
+	await v.handle.tools();
+	assert.ok(v.files.files.has(CACHE));
+	app(v.net, WS.origin).revokeAll();
+	await v.tick(3);
+	await v.connector.settled();
+	assert.match(await v.connector.status(), /revoked/);
+	assert.equal(v.files.files.has(CACHE), false);
+	assert.ok([...v.files.files.keys()].some((p) => p.includes("/credentials/")), "the credential stays until a reconnect replaces it");
 });

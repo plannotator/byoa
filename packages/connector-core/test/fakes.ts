@@ -1,52 +1,16 @@
-// Test doubles: an in-memory FilePort, a fake network of fake apps (the BYOA
-// doors per SPEC plus an MCP server), a fake host with scripted busy/idle and
-// turn events, and a scripted clock. No real sleeps and no sockets: a held
-// poll is a promise the fake app resolves when a command arrives, a newer
-// poll supersedes it, or the test releases it.
+// Test doubles: a fake network of fake apps (the BYOA doors per SPEC plus an
+// MCP server) and a world that wires them to a real connector. The fake host,
+// the in-memory FilePort and the clock are the published ones, from
+// src/testing.ts. No real sleeps and no sockets: a held poll is a promise the
+// fake app resolves when a command arrives, a newer poll supersedes it, or
+// the test releases it.
 import { Connector } from "../src/connector.ts";
-import type { Display, HostAdapter, HostSession, SessionHandle } from "../src/host.ts";
-import type { FilePort, HttpPort, HttpRequest, HttpResponse } from "../src/ports.ts";
-import type { Command, MessageCommand, MessageEvent, PollRequest, RegisterRequest, SessionSetting, Workspace } from "../src/protocol.ts";
+import type { SessionHandle } from "../src/host.ts";
+import type { HttpPort, HttpRequest, HttpResponse } from "../src/ports.ts";
+import type { Command, MessageCommand, MessageEvent, PollRequest, RegisterRequest } from "../src/protocol.ts";
+import { FakeHost, FakeSessionHost, HOME, MemoryFiles } from "../src/testing.ts";
 
-export const HOME = "/home/dana";
-
-// ── files ───────────────────────────────────────────────────────────────────
-
-export class MemoryFiles implements FilePort {
-	readonly files = new Map<string, { text: string; mode: number }>();
-	readonly dirs = new Map<string, number>();
-
-	async read(path: string) {
-		const f = this.files.get(path);
-		return f === undefined ? null : { ...f };
-	}
-	async writePrivate(path: string, text: string) {
-		let dir = path.slice(0, path.lastIndexOf("/"));
-		while (dir !== "" && !this.dirs.has(dir)) {
-			this.dirs.set(dir, 0o700);
-			dir = dir.slice(0, dir.lastIndexOf("/"));
-		}
-		this.dirs.set(path.slice(0, path.lastIndexOf("/")), 0o700);
-		this.files.set(path, { text, mode: 0o600 });
-	}
-	async remove(path: string) {
-		this.files.delete(path);
-	}
-	async list(dir: string) {
-		const names = new Set<string>();
-		for (const p of [...this.files.keys(), ...this.dirs.keys()])
-			if (p.startsWith(`${dir}/`)) names.add(p.slice(dir.length + 1).split("/")[0] as string);
-		return [...names];
-	}
-	/** As a person would write it with an editor. */
-	put(path: string, text: string, mode = 0o644) {
-		this.files.set(path, { text, mode });
-	}
-	chmod(path: string, mode: number) {
-		const f = this.files.get(path);
-		if (f) f.mode = mode;
-	}
-}
+export { FakeHost, FakeSessionHost, HOME, MemoryFiles };
 
 // ── network ─────────────────────────────────────────────────────────────────
 
@@ -118,6 +82,8 @@ export class FakeApp {
 	readonly pairings = new Map<string, { userCode: string; state: "pending" | "approved" | "denied" | "collected" }>();
 	readonly toolCalls: { name: string; arguments: unknown; meta: unknown; auth: string | null }[] = [];
 	mcpSessionId: string | null = null;
+	/** The next this many tools/list calls answer 503, as during a deploy. */
+	listFailures = 0;
 	startLink: ((link: string) => string) | null = null;
 	#n = 0;
 
@@ -292,6 +258,10 @@ export class FakeApp {
 			return reply({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: this.o.id } }, { "mcp-session-id": "mcp-s-1" });
 		}
 		if (body.method === "notifications/initialized") return { status: 202, text: "", headers: {} };
+		if (body.method === "tools/list" && this.listFailures > 0) {
+			this.listFailures--;
+			return json(503, { error: "deploying" });
+		}
 		if (this.o.mcpSession && req.headers["mcp-session-id"] !== this.mcpSessionId)
 			return json(400, { jsonrpc: "2.0", id: body.id ?? null, error: { code: -32000, message: "Bad Request: Server not initialized" } });
 		if (body.method === "tools/list") return reply({ tools: this.o.tools ?? [] });
@@ -306,68 +276,6 @@ export class FakeApp {
 
 export function json(status: number, body?: unknown): HttpResponse {
 	return { status, text: body === undefined ? "" : JSON.stringify(body), headers: { "content-type": "application/json" } };
-}
-
-// ── host ────────────────────────────────────────────────────────────────────
-
-export class FakeHost implements HostAdapter {
-	readonly host: string;
-	constructor(host = "claude-code") {
-		this.host = host;
-	}
-	readonly hostVersion = "2.1.306";
-	readonly machineName = "dana-mbp";
-	interactive = true;
-	readonly displays: Display[] = [];
-	isInteractive() {
-		return this.interactive;
-	}
-	display(d: Display) {
-		this.displays.push(d);
-	}
-	get toasts(): string[] {
-		return this.displays.flatMap((d) => (d.toast ? [d.toast.text] : []));
-	}
-}
-
-export class FakeSessionHost implements HostSession {
-	id: string | null = "host-session-1";
-	isBusy = false;
-	isBlocked = false;
-	readonly submitted: string[] = [];
-	readonly applied: string[] = [];
-	readonly order: string[] = [];
-	aborts = 0;
-	settingsList: SessionSetting[] = [{ id: "model", name: "Model", value: null, choices: [{ value: "opus", name: "Opus" }, { value: "sonnet", name: "Sonnet" }] }];
-	ws: Workspace = { folder_name: "northstar", path: "/home/dana/code/northstar", git_remote: "github.com/acme/northstar", branch: "main" };
-	failSubmit = false;
-	hostSessionId() {
-		return this.id;
-	}
-	workspace() {
-		return this.ws;
-	}
-	busy() {
-		return this.isBusy;
-	}
-	blocked() {
-		return this.isBlocked;
-	}
-	async submit(text: string) {
-		if (this.failSubmit) throw new Error("the host refused");
-		this.submitted.push(text);
-		this.order.push(`submit:${text.split("\n")[0]}`);
-	}
-	async abort() {
-		this.aborts += 1;
-	}
-	settings() {
-		return this.settingsList;
-	}
-	async applySetting(id: string, value: string) {
-		this.applied.push(`${id}=${value}`);
-		this.order.push(`set:${id}=${value}`);
-	}
 }
 
 // ── a world ─────────────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ A host adapter is thin. It supplies the ports, reports its host's turn events, a
 
 A Claude Code mod can import only its own folder and has no Node. So:
 
-- `src/` imports nothing outside itself except `@plannotator/byoa-protocol`, and only `src/protocol.ts` does that, with one line: `export * from "@plannotator/byoa-protocol";`. A sync script copies `connector-core/src/*` and `protocol/src/*` into the mod. It then rewrites that one line to the copied protocol, for example `export * from "../protocol/index.ts";` (see `connectors/claude-code/scripts/sync-core.mjs`).
+- `src/` imports nothing outside itself except `@plannotator/byoa-protocol`, and only `src/protocol.ts` does that, with one line: `export * from "@plannotator/byoa-protocol";`. A sync script copies `connector-core/src/*` (all but `testing.ts`) and `protocol/src/*` into the mod. It then rewrites that one line to the copied protocol, for example `export * from "../protocol/index.ts";` (see `connectors/claude-code/scripts/sync-core.mjs`).
 - No file uses a Node module or a global beyond the language, `URL` and `JSON`. That means no `fetch`, timers, `TextEncoder` or `crypto`. All I/O goes through the ports. `test/purity.test.ts` enforces both rules.
 
 ## The adapter interface
@@ -70,6 +70,7 @@ These are in `src/ports.ts`.
 | Path | What | Rules |
 | --- | --- | --- |
 | `credentials/<host>/<origin-key>.json` | One per agent host and paired app origin: Claude Code and Pi on one machine are two connections (SPEC 4.1). It holds the token, the connection id, the account name, the app's id and name from pairing, and its discovery document. `<origin-key>` is the origin with `://` and other non-name characters replaced by `_`, for example `https_workspaces.example` or `http_127.0.0.1_4100`. | Written 0600 in a 0700 folder, atomically. A file with any group or other bits is refused and named in status. The origin inside must match the file name. |
+| `tools/<host>/<origin-key>.json` | The last `tools/list` each app answered, as read, with the origin and when. If `tools/list` fails at session start (after one quick retry), for example during an app deploy, the session builds that app's tool from this list, and status says "tools from cache". Calls still go to the live app. The tool built from it is byte for byte the one built from an equal fresh list, so the prompt cache holds. | Written 0600 in a 0700 folder, atomically, on each successful list. A file with any group or other bits is not used. Removed when the app is disconnected, and when its token is revoked (the credential itself stays until a reconnect replaces it). |
 | `policy.json` | The one setting: which workspace fields each app is sent. `{ "share": { "<app id>": ["folder_name", "git_remote", "branch", "path"], "*": [...] } }`. The default is `["folder_name", "git_remote"]`. | A file other users can write, or one that does not parse, shares nothing, and status says so. It is read again every 30 s and on `status`. |
 
 ## Commands
@@ -120,6 +121,28 @@ The event names above are illustrative. Each host has its own; see `docs/design.
 These follow SPEC 11: steer and `upgrade`, the loopback grant, `state` events, the on-disk lease and claims, per-app rate limits, policy beyond `share`, the `DELETE` session call, and tool phases.
 
 Two processes on one session rely on the app handing each message to one poll. Polls that keep being superseded back off from 1 to 30 s, and status says why.
+
+## Testing an app against the real connector
+
+`@plannotator/byoa-connector-core/testing` drives the real connector against a real app with no agent. It keeps the core's rules (no Node, no timers), so it runs in Node, Bun, Deno and workerd. It exports:
+
+- `FakeHost` and `FakeSessionHost`: a host process and one conversation. Set `isBusy` and `isBlocked`; `submitted` collects the prompts the connector starts. After `session.attachTo(connector)`, play the host's side of a turn with `startTurn()`, `text(s)`, `tool(name, title?)`, `end(outcome?)` and `takeOver(prompt?)`. `aborts` counts the connector's Stops.
+- `MemoryFiles`: an in-memory `FilePort` that keeps permission bits. `HOME` is a home folder to pass.
+- `fetchHttp(fetchLike)`: an `HttpPort` over any fetch-like function, with no redirects followed. In workerd pass `SELF.fetch`; in-process wrap the app's handler: `(url, init) => byoa.handle(new Request(url, init)).then((r) => r ?? new Response(null, { status: 404 }))`.
+- `ScriptedClock` (`clock.now` for the connector, `clock.advance(ms)`) and `realClock`.
+- `pairByPage({ connector, origin, request, headers, step })`: pairs through the real approval page as the signed-in person `headers` names (a cookie), then calls `step()` until the connector says it is connected. `step` advances the clock, calls `connector.tick()`, and lets requests in flight finish.
+
+```ts
+const clock = new ScriptedClock();
+const connector = new Connector({ host: new FakeHost(), http: fetchHttp(app), files: new MemoryFiles(), now: clock.now, home: HOME });
+await connector.start();
+const step = async () => { clock.advance(1000); await connector.tick(); await new Promise((r) => setTimeout(r, 10)); };
+await pairByPage({ connector, origin, request: app, headers: { cookie: "session=..." }, step });
+const session = new FakeSessionHost();
+session.attachTo(connector);
+// ...the app sends a chat; step until session.submitted has it, then:
+session.startTurn(); session.text("Hello."); session.end("done");
+```
 
 ## Tests
 

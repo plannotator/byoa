@@ -1,6 +1,6 @@
 {
   "name": "@plannotator/byoa-pi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The BYOA connector for Pi: connects your running Pi session to every BYOA app you pair with /byoa connect.",
   "keywords": [
     "pi-package"
@@ -27,6 +27,7 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE-MIT",
     "LICENSE-APACHE"
   ],
@@ -38,8 +39,8 @@
     "live": "node scripts/live.ts"
   },
   "dependencies": {
-    "@plannotator/byoa-connector-core": "workspace:*",
-    "@plannotator/byoa-protocol": "workspace:*"
+    "@plannotator/byoa-connector-core": "workspace:^",
+    "@plannotator/byoa-protocol": "workspace:^"
   },
   "publishConfig": {
     "access": "public",

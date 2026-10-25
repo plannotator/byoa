@@ -48,4 +48,6 @@ export const text = {
 	noApps: () => `BYOA: not connected to any app. ${COMMAND} connect <address> to connect one.`,
 	sessionLine: (state: string) => `this session: ${state}`,
 	toolsFailed: (name: string, why: string) => `BYOA: ${app(name)}'s tools are not available in this session (${shown(why)}).`,
+	toolsFromCache: (name: string, why: string) =>
+		`BYOA: could not list ${app(name)}'s tools (${shown(why)}); this session uses tools from cache, the list it last answered. Calls still go to the app.`,
 } as const;

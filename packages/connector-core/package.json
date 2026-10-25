@@ -1,6 +1,6 @@
 {
   "name": "@plannotator/byoa-connector-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The host-free core of the BYOA connector: pairing, credentials, the session doors, the turn scheduler and the proxied tools. No Node, no host: every effect goes through a port.",
   "license": "MIT OR Apache-2.0",
   "repository": {
@@ -14,11 +14,13 @@
   },
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE-MIT",
     "LICENSE-APACHE"
   ],
@@ -27,7 +29,7 @@
     "prepack": "pnpm --filter @plannotator/byoa-connector-core... run build"
   },
   "dependencies": {
-    "@plannotator/byoa-protocol": "workspace:*"
+    "@plannotator/byoa-protocol": "workspace:^"
   },
   "publishConfig": {
     "access": "public",
@@ -35,6 +37,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./testing": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
       }
     }
   }

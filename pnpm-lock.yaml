@@ -20,19 +20,19 @@ importers:
   connectors/opencode:
     dependencies:
       '@plannotator/byoa-connector-core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/connector-core
       '@plannotator/byoa-protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/protocol
 
   connectors/pi:
     dependencies:
       '@plannotator/byoa-connector-core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/connector-core
       '@plannotator/byoa-protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/protocol
 
   examples/demo:
@@ -44,12 +44,16 @@ importers:
         specifier: workspace:*
         version: link:../../packages/server
 
-  packages/conformance: {}
+  packages/conformance:
+    devDependencies:
+      '@plannotator/byoa-connector-core':
+        specifier: workspace:*
+        version: link:../connector-core
 
   packages/connector-core:
     dependencies:
       '@plannotator/byoa-protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../protocol
 
   packages/protocol: {}
@@ -57,7 +61,7 @@ importers:
   packages/server:
     dependencies:
       '@plannotator/byoa-protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../protocol
 
 packages:
