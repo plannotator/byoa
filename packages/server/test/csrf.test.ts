@@ -70,3 +70,9 @@ test("an encoded BYOA path is refused, never decoded", async () => {
 		assert.equal(res?.status, 404, path);
 	}
 });
+
+test("hostName names only known hosts; a prototype member is shown as declared", async () => {
+	const { hostName } = await import("../src/pages.ts");
+	assert.equal(hostName("claude-code"), "Claude Code");
+	for (const h of ["constructor", "toString", "__proto__"]) assert.equal(hostName(h), h);
+});

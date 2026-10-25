@@ -30,15 +30,17 @@ export async function readSharing(files: FilePort, path: string): Promise<Sharin
 		return { ok: false, message: `BYOA: ${path} can be changed by other users on this machine, so nothing is shared until it is fixed (chmod 644 ${path}).` };
 	const v = parseJsonText(raw.text) as { share?: unknown } | undefined;
 	const share = typeof v === "object" && v !== null ? v.share : undefined;
-	const table: Record<string, WorkspaceField[]> = {};
+	// A Map, not an object: an app id of "constructor", or a "__proto__" key
+	// in the file, must be just another key.
+	const table = new Map<string, WorkspaceField[]>();
 	if (share !== undefined) {
 		if (typeof share !== "object" || share === null || Array.isArray(share)) return broken(path);
 		for (const [app, fields] of Object.entries(share)) {
 			if (!Array.isArray(fields) || !fields.every((f) => typeof f === "string" && FIELDS.has(f))) return broken(path);
-			table[app] = fields as WorkspaceField[];
+			table.set(app, fields as WorkspaceField[]);
 		}
 	} else if (typeof v !== "object" || v === null) return broken(path);
-	return { ok: true, fieldsFor: (appId) => [...(table[appId] ?? table["*"] ?? DEFAULT_SHARE)] };
+	return { ok: true, fieldsFor: (appId) => [...(table.get(appId) ?? table.get("*") ?? DEFAULT_SHARE)] };
 }
 
 function broken(path: string): Sharing {

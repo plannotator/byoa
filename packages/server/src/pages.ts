@@ -32,7 +32,8 @@ const SECURITY_HEADERS = ["content-security-policy", "x-frame-options", "cache-c
 const HOST_NAMES: Record<string, string> = { "claude-code": "Claude Code", pi: "Pi", opencode: "OpenCode", amp: "Amp" };
 
 export function hostName(host: string): string {
-	return HOST_NAMES[host] ?? host;
+	// Own keys only: a declared host of "constructor" names itself, not Object's.
+	return Object.hasOwn(HOST_NAMES, host) ? (HOST_NAMES[host] as string) : host;
 }
 
 export function escapeHtml(text: string): string {
