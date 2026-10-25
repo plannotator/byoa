@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+- Fix: pressing Connect on the approval page failed in real browsers. The built-in page sent `Referrer-Policy: no-referrer`, so a browser posted the form with `Origin: null`, and the default CSRF check, which wanted `Origin` equal to `app.origin`, refused every press. The pages now send `Referrer-Policy: same-origin`, and the default check also passes a POST or DELETE whose `Origin` is `null` or missing when the browser says `Sec-Fetch-Site: same-origin`. A custom page that keeps `no-referrer` works too. Both paths are proven by pressing Connect in Chromium.
+- `storeConformance(factory, { settle })`: how to let a store's pending I/O finish before scripted time moves. The default suits an in-memory store; a store with a database round trip passes a longer one. `FakeClock` takes the same function as its second argument.
+- The conformance suite no longer compares `user_code_hash` on a read-back pairing. The server never reads it back, so a store may keep it hashed under its own pepper or clear it on decide.
+
 ## 0.1.1
 
 Every change is additive. An app written for 0.1.0 works unchanged.

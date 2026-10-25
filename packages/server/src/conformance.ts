@@ -64,6 +64,12 @@ export interface ConformanceCase {
 export interface ConformanceOptions {
 	/** Default true. False leaves out the cases that script time. */
 	timing?: boolean;
+	/** How to let the store's pending work finish before scripted time moves.
+	 * The default runs ten rounds of microtasks and a zero-delay timer, enough
+	 * for an in-memory store. A store that does real I/O (a database round
+	 * trip, an RPC) passes its own, for example
+	 * `() => new Promise((r) => setTimeout(r, 25))`. */
+	settle?: () => Promise<void>;
 }
 
 export function storeConformance(factory: StoreFactory, options: ConformanceOptions = {}): ConformanceCase[] {
@@ -73,7 +79,7 @@ export function storeConformance(factory: StoreFactory, options: ConformanceOpti
 		async run() {
 			const env = await factory();
 			try {
-				await c.run(new Kit(env));
+				await c.run(new Kit(env, options.settle));
 			} finally {
 				await env.cleanup?.();
 			}
@@ -161,15 +167,22 @@ interface Started {
 
 type Consent = Extract<ApprovalPage, { state: "consent" }>;
 
+function withoutUserCode(record: PairingRecord | null): Omit<PairingRecord, "user_code_hash"> | null {
+	if (record === null) return null;
+	const { user_code_hash: _, ...rest } = record;
+	return rest;
+}
+
 /** One case's people, clock and store. */
 class Kit {
 	readonly env: StoreUnderTest;
-	readonly clock = new FakeClock(T0);
+	readonly clock: FakeClock;
 	/** Fresh ids per case, so cases never see each other's records. */
 	readonly alice = `alice-${hexId()}`;
 	readonly bob = `bob-${hexId()}`;
 
-	constructor(env: StoreUnderTest) {
+	constructor(env: StoreUnderTest, settle?: () => Promise<void>) {
+		this.clock = new FakeClock(T0, settle);
 		this.env = env;
 	}
 
@@ -392,7 +405,9 @@ const CASES: CaseDef[] = [
 			equal(await pairings.findByUserCode(q.user_code_hash, T0), null, "not found once denied");
 			// findByDeviceCode finds any status: the poll door reads it.
 			const byDevice = await pairings.findByDeviceCode(p.device_code_hash);
-			deepEqual(byDevice, { ...p, status: "approved", approved_by: { user_id: kit.alice, display_name: "Alice" } }, "findByDeviceCode after approval");
+			// user_code_hash is left out: the server never reads it back, so a
+			// store may keep it hashed under its own pepper, or clear it on decide.
+			deepEqual(withoutUserCode(byDevice), withoutUserCode({ ...p, status: "approved", approved_by: { user_id: kit.alice, display_name: "Alice" } }), "findByDeviceCode after approval");
 			equal(await pairings.findByDeviceCode(await sha256Hex("unknown")), null, "an unknown device code");
 		},
 	},

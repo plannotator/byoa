@@ -111,7 +111,7 @@ test("a custom page gets the security headers it left out, and keeps the ones it
 	assert.equal(res.headers.get("content-type"), "text/html");
 	assert.equal(res.headers.get("x-app"), "mine");
 	assert.equal(res.headers.get("cache-control"), "no-store");
-	assert.equal(res.headers.get("referrer-policy"), "no-referrer");
+	assert.equal(res.headers.get("referrer-policy"), "same-origin");
 	assert.equal(res.headers.get("x-content-type-options"), "nosniff");
 
 	// Immutable headers (a redirect's) are copied, not written to.

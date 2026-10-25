@@ -1,0 +1,61 @@
+// The default CSRF check (byoa.ts sameOrigin). A browser's form POST from a
+// page with Referrer-Policy: no-referrer carries `Origin: null`; the check
+// then takes the browser's own Sec-Fetch-Site. Found by pressing Connect in
+// a real Chromium, where the 0.1.0 check refused every press.
+
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { sameOrigin } from "../src/byoa.ts";
+import { FakeClock, settle } from "../src/fake-clock.ts";
+import { storeConformance } from "../src/conformance.ts";
+import { memoryStore } from "../src/index.ts";
+
+const APP = "https://app.example";
+const post = (headers: Record<string, string>) => new Request(`${APP}/byoa/connect`, { method: "POST", headers });
+
+test("the default CSRF check: what passes and what is refused", () => {
+	assert.ok(sameOrigin(new Request(`${APP}/byoa/connect`), APP), "a GET is never checked");
+	assert.ok(sameOrigin(post({ origin: APP }), APP), "the app's own Origin");
+	assert.ok(sameOrigin(post({ origin: "null", "sec-fetch-site": "same-origin" }), APP), "Origin null from a no-referrer page, same-origin per the browser");
+	assert.ok(sameOrigin(post({ "sec-fetch-site": "same-origin" }), APP), "no Origin, same-origin per the browser");
+	assert.ok(!sameOrigin(post({ origin: "https://evil.example" }), APP), "another origin");
+	assert.ok(!sameOrigin(post({ origin: "https://evil.example", "sec-fetch-site": "same-origin" }), APP), "another origin, whatever Sec-Fetch-Site says");
+	assert.ok(!sameOrigin(post({ origin: "null", "sec-fetch-site": "cross-site" }), APP), "Origin null from another site");
+	assert.ok(!sameOrigin(post({ origin: "null", "sec-fetch-site": "same-site" }), APP), "Origin null from a sibling subdomain");
+	assert.ok(!sameOrigin(post({ origin: "null" }), APP), "Origin null and no Sec-Fetch-Site");
+	assert.ok(!sameOrigin(post({}), APP), "neither header");
+	assert.ok(!sameOrigin(new Request(`${APP}/byoa/ui/connections/c`, { method: "DELETE", headers: { origin: "null", "sec-fetch-site": "none" } }), APP), "a DELETE typed into the address bar");
+});
+
+test("a FakeClock waits with the settle it was given", async () => {
+	let calls = 0;
+	const clock = new FakeClock(0, async () => {
+		calls++;
+		await settle();
+	});
+	let fired = false;
+	clock.setTimeout(() => (fired = true), 1000);
+	await clock.advance(1000);
+	assert.ok(fired);
+	assert.ok(calls >= 3, `settle ran ${calls} times`);
+});
+
+test("conformance: a store whose I/O outlasts the default settle passes with its own settle", async () => {
+	// Every store call waits 40 ms of real time, longer than the default settle, as a database round trip would.
+	const slow = () => {
+		const base = memoryStore();
+		const delay = () => new Promise<void>((resolve) => setTimeout(resolve, 40));
+		const wrap = <T extends object>(o: T): T =>
+			new Proxy(o, {
+				get(target, key, receiver) {
+					const value = Reflect.get(target, key, receiver);
+					return typeof value === "function" ? async (...args: unknown[]) => (await delay(), value.apply(target, args)) : value;
+				},
+			});
+		return { store: { pairings: wrap(base.pairings), connections: wrap(base.connections), hub: base.hub } };
+	};
+	const cases = storeConformance(slow, { settle: () => new Promise((resolve) => setTimeout(resolve, 200)) });
+	const held = cases.find((c) => c.name.startsWith("timing: a poll is held"));
+	assert.ok(held);
+	await held.run();
+});

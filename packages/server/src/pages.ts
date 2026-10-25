@@ -19,7 +19,10 @@ const HEADERS: Record<string, string> = {
 	"content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
 	"x-frame-options": "DENY",
 	"cache-control": "no-store",
-	"referrer-policy": "no-referrer",
+	// same-origin, not no-referrer: under no-referrer a browser's form POST
+	// carries `Origin: null`. The page's URL holds the code, and it never
+	// leaves the app's origin either way.
+	"referrer-policy": "same-origin",
 	"x-content-type-options": "nosniff",
 };
 

@@ -1,6 +1,6 @@
 {
   "name": "@plannotator/byoa-server",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "The app side of BYOA: pairing, sessions, the long-poll and the UI stream, as one fetch-API handler. Web standard APIs only.",
   "license": "MIT OR Apache-2.0",
   "repository": {

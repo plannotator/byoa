@@ -93,7 +93,7 @@ test("the approval page: headers, contents, no side effect on GET", async () => 
 	assert.equal(res.headers.get("content-security-policy")?.startsWith("default-src 'none'; style-src 'unsafe-inline'"), true);
 	assert.equal(res.headers.get("x-frame-options"), "DENY");
 	assert.equal(res.headers.get("cache-control"), "no-store");
-	assert.equal(res.headers.get("referrer-policy"), "no-referrer");
+	assert.equal(res.headers.get("referrer-policy"), "same-origin");
 	const html = await res.text();
 	assert.ok(!html.includes("<script"));
 	assert.ok(html.includes(s.user_code), "the code, normalized from lowercase without hyphen");

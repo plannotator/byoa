@@ -58,7 +58,7 @@ serve({ fetch: async (req) => (await byoa.handle(req)) ?? new Response("Not foun
 | person | `DELETE /byoa/ui/connections/{id}` | Disconnect. |
 
 - Connector doors accept only a BYOA connection token. They refuse any request that has an `Origin` header, because a connector is never a browser page.
-- UI doors accept only the person's session. A POST or DELETE needs a CSRF check. By default, `Origin` must equal `app.origin`. You can replace the check with `checkCsrf`.
+- UI doors accept only the person's session. A POST or DELETE needs a CSRF check. By default, `Origin` must equal `app.origin`, or, when a browser sends `Origin: null` or none (as it does from a page with `Referrer-Policy: no-referrer`), `Sec-Fetch-Site` must be `same-origin`. You can replace the check with `checkCsrf`.
 - UI doors refuse any request that has an `Authorization` header, the connection's own token included. So no token can start a turn (SPEC 9.1, 9.2).
 
 ## Server-side calls
@@ -108,7 +108,7 @@ Your page must:
 - keep the controls against pairing phishing (SPEC 9.9): show the code and its age (`ageSeconds`), the account (`accountName`), the machine marked unverified (`machineName`, `machineVerified: false`), and the sentence that says what connecting grants (`page.grant`, or `grantSentence(page)` for the same words);
 - send `page.status`.
 
-If your response lacks the built-in pages' security headers (`Content-Security-Policy`, `X-Frame-Options: DENY`, `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`), the SDK adds the missing ones. It never replaces a header you set. The added CSP is `default-src 'none'` with inline style only, so set your own if the page loads stylesheets or fonts.
+If your response lacks the built-in pages' security headers (`Content-Security-Policy`, `X-Frame-Options: DENY`, `Cache-Control: no-store`, `Referrer-Policy: same-origin`, `X-Content-Type-Options: nosniff`), the SDK adds the missing ones. It never replaces a header you set. The added CSP is `default-src 'none'` with inline style only, so set your own if the page loads stylesheets or fonts.
 
 ## Writing the turn on your server
 
@@ -177,6 +177,8 @@ const make = async () => ({
 ```
 
 - **The clock.** Cases script time with a `FakeClock`, which `createByoa` passes to `store.hub(userId, config)` as `config.clock`. Your hub must take all time and timers from `config.clock`, and its poll hold from `config.pollHoldMs`, so a Durable Object adapter has to pass the clock through in tests. If your hub uses real time, pass `{ timing: false }` to leave out the cases that need scripted time.
+- **Real I/O.** Before scripted time moves, the clock lets pending work finish. The default wait suits an in-memory store. A store whose calls take a database round trip passes its own, for example `storeConformance(make, { settle: () => new Promise((r) => setTimeout(r, 200)) })`. Otherwise a held poll's timer is set after time has already moved, and the case hangs.
+- **The user code.** The suite never compares a stored `user_code_hash`, so your store may keep it hashed under its own pepper or clear it on decide.
 - **Restart.** With `restart`, the suite checks that connections and pairings survive, that the token still authenticates, and that re-register returns the same session id. The hub may have forgotten the session (the next poll answers `404 session_not_found`) or kept it. Without `restart`, those cases check nothing.
 - Each case uses its own user ids, so a shared test database works.
 - Do not fake the runner's global timers (`vi.useFakeTimers()`). The suite yields to zero-delay timers so that requests in flight can finish.

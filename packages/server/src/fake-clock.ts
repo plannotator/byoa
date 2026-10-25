@@ -24,9 +24,13 @@ export class FakeClock implements Clock {
 	t: number;
 	#timers = new Map<number, Timer>();
 	#next = 1;
+	readonly #settle: () => Promise<void>;
 
-	constructor(start = Date.parse("2026-10-21T12:00:00Z")) {
+	/** `settle` waits for pending work before and after time moves; the
+	 * default suits in-memory code. */
+	constructor(start = Date.parse("2026-10-21T12:00:00Z"), settleFn: () => Promise<void> = () => settle()) {
 		this.t = start;
+		this.#settle = settleFn;
 	}
 
 	now(): number {
@@ -46,7 +50,7 @@ export class FakeClock implements Clock {
 	/** Move time forward, firing due timers in order. */
 	async advance(ms: number): Promise<void> {
 		// Requests already in flight reach their timers before time moves.
-		await settle();
+		await this.#settle();
 		const end = this.t + ms;
 		for (;;) {
 			let due: [number, Timer] | undefined;
@@ -55,9 +59,9 @@ export class FakeClock implements Clock {
 			this.#timers.delete(due[0]);
 			this.t = due[1].at;
 			due[1].fn();
-			await settle();
+			await this.#settle();
 		}
 		this.t = end;
-		await settle();
+		await this.#settle();
 	}
 }

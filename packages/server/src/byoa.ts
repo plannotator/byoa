@@ -48,8 +48,7 @@ export function createByoa(options: ByoaOptions): Byoa {
 	const clock = options.clock ?? systemClock;
 	const hubConfig: HubConfig = { clock, limits: { ...DEFAULT_LIMITS, ...options.limits }, pollHoldMs: pollHoldSeconds * 1000 };
 	const hub = (userId: string) => store.hub(userId, hubConfig);
-	const checkCsrf =
-		options.checkCsrf ?? ((req: Request) => (req.method !== "POST" && req.method !== "DELETE") || req.headers.get("origin") === options.app.origin);
+	const checkCsrf = options.checkCsrf ?? ((req: Request) => sameOrigin(req, options.app.origin));
 
 	async function sessions(userId: string): Promise<UiConnection[]> {
 		const connections = (await store.connections.listByUser(userId)).filter((c) => c.revoked_at === null);
@@ -269,6 +268,18 @@ export function createByoa(options: ByoaOptions): Byoa {
 		},
 		revoke,
 	};
+}
+
+/** The default CSRF check: a POST or DELETE must come from the app's own
+ * pages. `Origin` equal to the app's origin passes. A browser sends
+ * `Origin: null` (or none) when the page's referrer policy is no-referrer,
+ * so then the browser's own `Sec-Fetch-Site: same-origin`, which no page
+ * script can set, passes too. Anything else is refused. */
+export function sameOrigin(req: Request, appOrigin: string): boolean {
+	if (req.method !== "POST" && req.method !== "DELETE") return true;
+	const origin = req.headers.get("origin");
+	if (origin === appOrigin) return true;
+	return (origin === null || origin === "null") && req.headers.get("sec-fetch-site") === "same-origin";
 }
 
 function notFound(): Response {
