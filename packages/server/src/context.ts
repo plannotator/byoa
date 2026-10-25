@@ -11,6 +11,7 @@ export interface Ctx {
 	clock: Clock;
 	pollHoldSeconds: number;
 	autoApprove: ByoaOptions["autoApprove"];
+	renderPage: ByoaOptions["renderPage"];
 	authenticate(req: Request): Promise<ByoaUser | null>;
 	checkCsrf(req: Request): boolean;
 	hub(userId: string): Hub;

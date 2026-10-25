@@ -5,5 +5,6 @@
 export { createByoa } from "./byoa.ts";
 export { SessionHub } from "./hub.ts";
 export { memoryStore } from "./memory-store.ts";
+export { grantSentence } from "./pages.ts";
 export type * from "./store.ts";
 export type * from "./types.ts";

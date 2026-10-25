@@ -52,7 +52,71 @@ export interface ByoaOptions {
 	settings?: string[];
 	/** Session fields the app cannot work without (AppNotes routes by git_remote). */
 	requires?: { workspace?: WorkspaceField[] };
+	/** Draw the approval page yourself, in your own layout. Return null or
+	 * undefined to use the built-in page for that state. It only renders: the
+	 * checks stay in the SDK. A response that lacks the built-in pages'
+	 * security headers gets the missing ones added; a header you set is kept.
+	 * Read the rules on ApprovalPage first. */
+	renderPage?: (page: ApprovalPage, req: Request) => Response | null | undefined | Promise<Response | null | undefined>;
 }
+
+/** The form fields the POST door reads, and the values `decision` takes. */
+export interface ApprovalForm {
+	method: "POST";
+	fields: { code: "code"; csrf: "csrf"; decision: "decision" };
+	decisions: { connect: "connect"; cancel: "cancel" };
+}
+
+/**
+ * One state of the device-grant approval page (SPEC 4.1), as data, for
+ * `renderPage`. Every string is raw, exactly as the person or the agent
+ * supplied it, so the app MUST escape all of it.
+ *
+ * The consent state MUST keep the controls against pairing phishing
+ * (SPEC 9.9): show `userCode` and `ageSeconds`, `accountName`, the machine
+ * marked unverified, and the sentence that says what connecting grants
+ * (`grant`, or `grantSentence()` for the same words). It MUST POST to
+ * `formAction` with exactly the fields in `form`: `code` = `userCode`,
+ * `csrf` = `csrfToken`, and `decision` = `connect` or `cancel`. Send the
+ * page with `status`. If the page needs more than inline style, set your own
+ * Content-Security-Policy; otherwise the built-in one (default-src 'none')
+ * is added.
+ */
+export type ApprovalPage =
+	/** Signed in, no code yet: a form that GETs `formAction` with `codeField`. */
+	| { state: "entry"; status: 200; appName: string; formAction: string; codeField: "code"; accountName: string }
+	/** The one answer for an unknown, expired, cancelled or used code. The data
+	 * is the same whichever it is, so keep it that way: name no code. */
+	| { state: "invalid"; status: 200; appName: string; formAction: string; codeField: "code" }
+	/** No signed-in session: ask the person to sign in and open the link again. */
+	| { state: "signIn"; status: 401; appName: string }
+	/** The POST failed a check (Origin, CSRF, decision). Nothing was connected. */
+	| { state: "expired"; status: 403; appName: string }
+	| {
+			state: "consent";
+			status: 200;
+			appName: string;
+			formAction: string;
+			accountName: string;
+			/** As the person types it back: `XXXX-XXXX`. */
+			userCode: string;
+			/** Seconds since the agent started the pairing. */
+			ageSeconds: number;
+			/** The host id the agent declared, like `claude-code`. */
+			host: string;
+			/** Its display name, like `Claude Code`. */
+			hostName: string;
+			/** As the agent declared it; null when it named none. */
+			machineName: string | null;
+			/** Always false: nothing checks the name. Say so on the page. */
+			machineVerified: false;
+			/** What connecting grants, in the built-in words. */
+			grant: string;
+			csrfToken: string;
+			form: ApprovalForm;
+	  }
+	| { state: "connected"; status: 200; appName: string; host: string; hostName: string }
+	| { state: "cancelled"; status: 200; appName: string };
 
 export type GoneReason = "stopped_polling" | "disconnected" | "continues_in_terminal";
 

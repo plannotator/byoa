@@ -105,7 +105,7 @@ export function createByoa(options: ByoaOptions): Byoa {
 		return connection !== null && connection.revoked_at === null ? connection : null;
 	}
 
-	const ctx: Ctx = { app: options.app, base, store, clock, pollHoldSeconds, autoApprove: options.autoApprove, authenticate: options.authenticate, checkCsrf, hub, connectionOf, revoke, sessions, subscribe };
+	const ctx: Ctx = { app: options.app, base, store, clock, pollHoldSeconds, autoApprove: options.autoApprove, renderPage: options.renderPage, authenticate: options.authenticate, checkCsrf, hub, connectionOf, revoke, sessions, subscribe };
 
 	const discovery: Discovery = {
 		byoa: BYOA_VERSION,

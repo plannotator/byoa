@@ -4,49 +4,13 @@
 
 import assert from "node:assert/strict";
 import type { SessionCapabilities } from "@plannotator/byoa-protocol";
-import { createByoa, memoryStore, type ByoaOptions, type Clock, type UiEvent } from "../src/index.ts";
+import { FakeClock, settle } from "../src/fake-clock.ts";
+import { createByoa, memoryStore, type ByoaOptions, type UiEvent } from "../src/index.ts";
+
+export { FakeClock, settle };
 
 export const ORIGIN = "https://app.example";
 const USERS: Record<string, string> = { ramos: "Ramos", dana: "Dana" };
-
-/** Let every pending promise chain run. Not a sleep: no time passes. */
-export async function settle(): Promise<void> {
-	for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
-}
-
-export class FakeClock implements Clock {
-	t = Date.parse("2026-10-21T12:00:00Z");
-	#timers = new Map<number, { at: number; fn: () => void }>();
-	#next = 1;
-	now(): number {
-		return this.t;
-	}
-	setTimeout(fn: () => void, ms: number): unknown {
-		const id = this.#next++;
-		this.#timers.set(id, { at: this.t + ms, fn });
-		return id;
-	}
-	clearTimeout(handle: unknown): void {
-		this.#timers.delete(handle as number);
-	}
-	/** Move time forward, firing due timers in order. */
-	async advance(ms: number): Promise<void> {
-		// Requests already in flight reach their timers before time moves.
-		await settle();
-		const end = this.t + ms;
-		for (;;) {
-			let due: [number, { at: number; fn: () => void }] | undefined;
-			for (const entry of this.#timers) if (entry[1].at <= end && (due === undefined || entry[1].at < due[1].at)) due = entry;
-			if (due === undefined) break;
-			this.#timers.delete(due[0]);
-			this.t = due[1].at;
-			due[1].fn();
-			await settle();
-		}
-		this.t = end;
-		await settle();
-	}
-}
 
 export const CAPS: SessionCapabilities = {
 	interrupt: true,

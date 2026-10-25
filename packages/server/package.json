@@ -14,7 +14,8 @@
   },
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./conformance": "./src/conformance.ts"
   },
   "files": [
     "dist",
@@ -35,6 +36,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./conformance": {
+        "types": "./dist/conformance.d.ts",
+        "default": "./dist/conformance.js"
       }
     }
   }

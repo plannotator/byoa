@@ -10,13 +10,16 @@
 // exactly one poll gets it. Unknown, expired, cancelled and used codes all
 // get one constant page. The one exception is `autoApprove`, for a local
 // app with no accounts on a loopback origin (createByoa refuses it elsewhere).
+// An app may draw the pages itself (`renderPage`), but every check above
+// stays here: the hook gets only the state to show.
 
 import { KNOBS, parsePairStart, type PairPollApproved, type PairStartResponse } from "@plannotator/byoa-protocol";
 import type { Ctx } from "./context.ts";
 import { formatUserCode, hmac, mintDeviceCode, mintToken, mintUserCode, normalizeUserCode, randomId, sha256Hex, timingSafeEqual, userCodeHash } from "./crypto.ts";
 import { json, readJson, readText, wireError } from "./http.ts";
-import { cancelledPage, connectedPage, consentPage, entryPage, expiredPage, invalidPage, signInPage } from "./pages.ts";
+import { grantSentence, hostName, renderPage } from "./pages.ts";
 import type { PairingRecord } from "./store.ts";
+import type { ApprovalForm, ApprovalPage } from "./types.ts";
 
 const LIFETIME_MS = KNOBS.pairingLifetimeSeconds * 1000;
 const INTERVAL_MS = KNOBS.pairingIntervalSeconds * 1000;
@@ -24,6 +27,8 @@ const INTERVAL_MS = KNOBS.pairingIntervalSeconds * 1000;
 const EARLY_GRACE_MS = 500;
 /** Shown on the page as the agent declared them, so no invisible or direction-changing characters. */
 const HIDDEN = /[​-‏‪-‮⁠-⁩﻿]/;
+/** The POST door reads exactly these; a custom page must send them. */
+const FORM: ApprovalForm = { method: "POST", fields: { code: "code", csrf: "csrf", decision: "decision" }, decisions: { connect: "connect", cancel: "cancel" } };
 
 export async function pairStart(ctx: Ctx, req: Request): Promise<Response> {
 	const body = await readJson(req, 16 * 1024);
@@ -125,46 +130,60 @@ async function signedIn(ctx: Ctx, req: Request) {
 
 /** GET: no side effect, ever. A link alone never connects. */
 export async function connectPage(ctx: Ctx, req: Request): Promise<Response> {
-	const action = `${ctx.base}/connect`;
+	const appName = ctx.app.name;
+	const formAction = `${ctx.base}/connect`;
+	const show = (p: ApprovalPage) => renderPage(p, req, ctx.renderPage);
 	const user = await signedIn(ctx, req);
-	if (user === null) return signInPage(ctx.app.name);
+	if (user === null) return show({ state: "signIn", status: 401, appName });
 	const raw = new URL(req.url).searchParams.get("code");
-	if (raw === null || raw.trim() === "") return entryPage(ctx.app.name, action, user.displayName);
+	if (raw === null || raw.trim() === "") return show({ state: "entry", status: 200, appName, formAction, codeField: "code", accountName: user.displayName });
 	const now = ctx.clock.now();
 	const normalized = normalizeUserCode(raw);
 	const pairing = normalized === null ? null : await ctx.store.pairings.findByUserCode(await userCodeHash(normalized), now);
-	if (normalized === null || pairing === null) return invalidPage(ctx.app.name, action);
-	return consentPage({
-		app: ctx.app.name,
-		action,
-		host: pairing.client.host,
-		machine: pairing.client.machine_name ?? null,
-		account: user.displayName,
+	if (normalized === null || pairing === null) return show({ state: "invalid", status: 200, appName, formAction, codeField: "code" });
+	const names = { hostName: hostName(pairing.client.host), machineName: pairing.client.machine_name ?? null, appName };
+	return show({
+		state: "consent",
+		status: 200,
+		appName,
+		formAction,
+		accountName: user.displayName,
 		userCode: formatUserCode(normalized),
 		ageSeconds: Math.max(0, Math.round((now - pairing.created_at) / 1000)),
-		csrf: await approvalToken(pairing, user.userId),
+		host: pairing.client.host,
+		hostName: names.hostName,
+		machineName: names.machineName,
+		machineVerified: false,
+		grant: grantSentence(names),
+		csrfToken: await approvalToken(pairing, user.userId),
+		form: FORM,
 	});
 }
 
 /** POST: the person's Connect or Cancel. */
 export async function connectDecide(ctx: Ctx, req: Request): Promise<Response> {
-	const action = `${ctx.base}/connect`;
+	const appName = ctx.app.name;
+	const formAction = `${ctx.base}/connect`;
+	const show = (p: ApprovalPage) => renderPage(p, req, ctx.renderPage);
+	const expired = () => show({ state: "expired", status: 403, appName });
+	const invalid = () => show({ state: "invalid", status: 200, appName, formAction, codeField: "code" });
 	const user = await signedIn(ctx, req);
-	if (user === null) return signInPage(ctx.app.name);
-	if (!ctx.checkCsrf(req)) return expiredPage();
+	if (user === null) return show({ state: "signIn", status: 401, appName });
+	if (!ctx.checkCsrf(req)) return expired();
 	const text = await readText(req, 4 * 1024);
-	if (text === null) return expiredPage();
+	if (text === null) return expired();
 	const form = new URLSearchParams(text);
 	const now = ctx.clock.now();
-	const normalized = normalizeUserCode(form.get("code") ?? "");
+	const normalized = normalizeUserCode(form.get(FORM.fields.code) ?? "");
 	const pairing = normalized === null ? null : await ctx.store.pairings.findByUserCode(await userCodeHash(normalized), now);
-	if (pairing === null) return invalidPage(ctx.app.name, action);
-	if (!timingSafeEqual(form.get("csrf") ?? "", await approvalToken(pairing, user.userId))) return expiredPage();
-	const decision = form.get("decision");
-	if (decision !== "connect" && decision !== "cancel") return expiredPage();
+	if (pairing === null) return invalid();
+	if (!timingSafeEqual(form.get(FORM.fields.csrf) ?? "", await approvalToken(pairing, user.userId))) return expired();
+	const decision = form.get(FORM.fields.decision);
+	if (decision !== FORM.decisions.connect && decision !== FORM.decisions.cancel) return expired();
 	const approver = decision === "connect" ? { user_id: user.userId, display_name: user.displayName } : null;
 	const won = await ctx.store.pairings.decide(pairing.id, decision === "connect" ? "approved" : "denied", approver, now);
 	// Decided in another tab, or expired since the page rendered.
-	if (!won) return invalidPage(ctx.app.name, action);
-	return decision === "connect" ? connectedPage(pairing.client.host) : cancelledPage();
+	if (!won) return invalid();
+	if (decision === "cancel") return show({ state: "cancelled", status: 200, appName });
+	return show({ state: "connected", status: 200, appName, host: pairing.client.host, hostName: hostName(pairing.client.host) });
 }
