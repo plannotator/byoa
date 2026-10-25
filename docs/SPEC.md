@@ -22,6 +22,7 @@ A **connection** is one pairing: one person's account in one app, bound to one h
   - An app MAY use 0, which means answer every poll at once. It then advertises `poll_interval_seconds` (default 5), and the connector polls that often. This suits an app on a serverless platform, where holding a request open is costly.
   - A connector holds one poll per app per session at the same time. This was measured: one Claude Code 2.1.306 mod held six 15 s fetches at once, all arrived together, and a quick fetch sent mid-hold was not delayed.
 - Errors have one shape, `{ "error": "<code>", "error_description": "<text>" }`. The pairing doors use RFC 8628's codes.
+- No path on the wire is percent-encoded: endpoint paths are fixed and every id is URL-safe. An app MUST answer 404 to a BYOA path that contains `%`, and MUST NOT decode it. Otherwise a check the app keys on the literal path, such as a rate limit or a CSRF rule, can be skipped with an encoded spelling (`/byoa/pair/%73tart`).
 
 ## 3. Discovery
 

@@ -177,12 +177,12 @@ export function createByoa(options: ByoaOptions): Byoa {
 		const path = new URL(req.url).pathname;
 		if (path === WELL_KNOWN_PATH) return req.method === "GET" ? json(discovery) : notAllowed("GET");
 		if (!path.startsWith(`${base}/`)) return null;
-		let parts: string[];
-		try {
-			parts = path.slice(base.length + 1).split("/").map(decodeURIComponent);
-		} catch {
-			return notFound();
-		}
+		// No BYOA path needs percent-encoding (every id is base64url), so an
+		// encoded one is refused, never decoded: a host check that compares
+		// the literal path (a rate limit, a CSRF rule) cannot be stepped round
+		// with /byoa/pair/%73tart.
+		if (path.includes("%")) return notFound();
+		const parts = path.slice(base.length + 1).split("/");
 		const [a, b, c, d, e, f] = parts;
 		const n = parts.length;
 		const method = req.method;

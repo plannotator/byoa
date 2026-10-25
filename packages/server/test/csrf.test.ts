@@ -59,3 +59,14 @@ test("conformance: a store whose I/O outlasts the default settle passes with its
 	assert.ok(held);
 	await held.run();
 });
+
+test("an encoded BYOA path is refused, never decoded", async () => {
+	const { createByoa } = await import("../src/index.ts");
+	const byoa = createByoa({ app: { id: "t", name: "T", origin: APP }, authenticate: async () => ({ userId: "u", displayName: "U" }) });
+	const start = await byoa.handle(new Request(`${APP}/byoa/pair/start`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }));
+	assert.notEqual(start?.status, 404, "the plain path is served");
+	for (const path of ["/byoa/pair/%73tart", "/byoa/%63onnect?code=BCDF-GHJK", "/byoa/sessions%2Fx/poll", "/byoa/ui/%73essions", "/byoa/%"]) {
+		const res = await byoa.handle(new Request(`${APP}${path}`, { method: path.includes("connect") || path.includes("ui/") ? "GET" : "POST", body: path.includes("connect") || path.includes("ui/") ? undefined : "{}" }));
+		assert.equal(res?.status, 404, path);
+	}
+});
