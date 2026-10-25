@@ -2,7 +2,7 @@
 // waiting for each, the one held poll per session, every open message's
 // events, and the listeners (their UI streams). Memory only; a restart
 // forgets it and connectors register again (store.ts). Shaped on Workspaces'
-// AgentSessionsDO, whose reviews set most of the rules below.
+// per-person session store, whose reviews set most of the rules below.
 //
 // A message is `waiting` until a poll takes it (Stop withdraws it here),
 // `handed` until any event answers it (offered once more after 30 s, the

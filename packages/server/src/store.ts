@@ -5,7 +5,7 @@
 // on a restart: the connector's next poll answers 404 and it registers again
 // under the same session id. A hub needs a single writer per person, so a
 // multi-instance app hosts each person's hub in one place (a Durable Object
-// per person, as Workspaces' AgentSessionsDO does). Every hub method takes
+// per person, as Workspaces does). Every hub method takes
 // and returns plain data or a callback, so that adapter is a thin wrapper.
 
 import type { ClientInfo, Command, MessageCommand, MessageEvent, PollRequest, RegisterRequest, SessionInfo } from "@plannotator/byoa-protocol";
