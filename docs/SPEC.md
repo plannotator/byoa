@@ -244,7 +244,12 @@ The browser never talks to the connector. These doors run between the app's own 
 
 ## 9. Security requirements
 
-1. **Only a person starts a turn.** An app creates a message only from an action by the paired person in their own signed-in session: typing in the chat, pressing Send on a hand-off, tagging their own agent, or answering a question. No bearer credential, no other person, and no scheduled automation can cause a message.
+1. **Only a person starts a turn.** An app creates a message only from an action by a person in their own signed-in session: typing in the chat, pressing Send on a hand-off, tagging an agent, or answering a question. No bearer credential, no agent (9.2), and no scheduled automation can cause a message. That person is the paired person, unless the app lets teammates wake the agent. An app MAY let other people who share a team or organization with the paired person start turns in that person's agent, for example by tagging it, only when:
+   - the paired person has a switch for it on that connection, can see its state, and can turn it off at any time, and no one else can turn it on (the app chooses the default; Workspaces has it on);
+   - while the switch is off, no other person's action creates a message for that connection;
+   - the message's `from` names the person who acted, so the turn's first line (8) names them and not the paired person.
+
+   The approval page SHOULD say that teammates can start turns in this agent, and where to turn that off. A teammate's turn runs on the paired person's machine with that person's files and permissions, so 9.4 applies to it: a session that runs without permission prompts acts on a teammate's words without asking.
 2. **No loops.** A connection token can never send a message, so no agent can start a turn in its own session or anyone else's.
 3. **Frames, not content** (5.3 `text`).
 4. **The host's permission prompts are the control.** A connector never answers a permission prompt and never hooks the host's permission check. A session that runs without prompts acts on whatever it reads, and connector setup says so. Pi asks no permission by default.

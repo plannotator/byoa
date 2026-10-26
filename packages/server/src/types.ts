@@ -214,7 +214,8 @@ export interface Byoa {
 	/** null when the request is not a BYOA route. Mount on "/.well-known/byoa" and basePath/*. */
 	handle(req: Request): Promise<Response | null>;
 	/** Server-side enqueue (a hand-off), under the UI send's rules. The app
-	 * calls it only from an action of this person (SPEC 9.1). */
+	 * calls it only from an action of this person, or of a teammate named in
+	 * `from` while this person allows teammates to wake the agent (SPEC 9.1). */
 	send(userId: string, sessionId: string, message: SendMessage): Promise<SendResult>;
 	/** Stop a message from the app's own server (its Stop button), under the
 	 * UI door's rules. Null when the person has no such session. */

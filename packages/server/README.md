@@ -63,7 +63,7 @@ serve({ fetch: async (req) => (await byoa.handle(req)) ?? new Response("Not foun
 
 ## Server-side calls
 
-- `byoa.send(userId, sessionId, { text, kind?, interruptFirst?, stream?, set?, from? })` queues a message from your own server code, for example a hand-off. It follows the same rules as the UI door, and `kind` defaults to `task`. Call it only from an action of that person (SPEC 9.1). Use it also when your app writes the turn's text itself, for example from ids in your own UI.
+- `byoa.send(userId, sessionId, { text, kind?, interruptFirst?, stream?, set?, from? })` queues a message from your own server code, for example a hand-off. It follows the same rules as the UI door, and `kind` defaults to `task`. Call it only from a person's action (SPEC 9.1): the paired person's, or, where your app lets teammates wake the agent and the person's switch is on, a teammate's, named in `from`. Use it also when your app writes the turn's text itself, for example from ids in your own UI.
 - `byoa.subscribe(userId, listener, onEnd?)` gives the events the UI stream carries. First you get the session list and every open message so far, then live events. It returns the unsubscribe function. `onEnd` is called once if the hub can no longer deliver (see the Durable Object note below); subscribe again to get a fresh list. `ui/events` is a thin SSE wrapper over it, and closes the tab's stream on `onEnd`, so the browser's `EventSource` reconnects. A per-send stream could be one too.
 - `byoa.sessions(userId)` gives the person's connections, each with its sessions.
 - `byoa.revoke(connectionId)` disconnects a connection. Its held polls answer 401 at once, and its open messages end `gone` with reason `disconnected`.
