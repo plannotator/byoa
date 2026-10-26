@@ -86,7 +86,7 @@ The app mints the token when the poll collects it, not at approval, so the raw t
 
 ### 4.2 Revocation
 
-- `POST revoke` with the token as bearer answers `204` and is idempotent. The connector calls it on disconnect.
+- `POST revoke` with the token as bearer answers `204` and is idempotent. The connector calls it on disconnect. As in RFC 7009, it answers `204` for a token that is unknown, already revoked or not a BYOA token at all, so the door never tells a caller which tokens are valid.
 - The app MAY revoke a connection at any time. After that, every door answers `401 unauthorized`, held polls end at once with `401`, and that connection's open UI messages end with `gone` (reason `disconnected`).
 
 ## 5. Sessions
@@ -120,6 +120,7 @@ The app mints the token when the poll collects it, not at approval, so the raw t
 - `settings` lists what the app may set before a turn (5.3 `set`), with the choices and the value in force, so the app can draw a picker (from Machine). `value` is null when the host does not report it; Claude Code does not report the model in force.
 - `workspace` fields are each OPTIONAL. The person's `share` setting decides which are sent; the default is `folder_name` and `git_remote`, and never `path`. `git_remote` is normalised to `host/path` (for example `github.com/acme/app`), with any user name or token in the URL removed, so apps can match sessions by repo across hosts.
 - `session.id` SHOULD be derived from the connection's credential id and `host_session_id`. A re-register after an app restart then gets the same id, and open conversations and stored choices keep pointing at it.
+- `host` MUST equal the host the connection was paired as: the person approved that host on the consent page, and each host keeps its own credential. An app answers a different one with `422 validation_error`.
 - An app MAY cap live sessions per connection (Workspaces: 64).
 
 ### 5.2 Poll

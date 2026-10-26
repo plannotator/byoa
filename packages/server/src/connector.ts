@@ -47,6 +47,10 @@ export async function register(ctx: Ctx, req: Request): Promise<Response> {
 	if (body instanceof Response) return body;
 	const parsed = parseRegister(body.value);
 	if (!parsed.ok) return wireError(422, "validation_error", parsed.reason);
+	// The person approved one host on the consent page; a session that says
+	// another is not that connection's (each host keeps its own credential).
+	if (parsed.value.host !== connection.host)
+		return wireError(422, "validation_error", `host: this connection was paired as ${connection.host}, not ${parsed.value.host}.`);
 	const sessionId = await sessionIdFor(connection.id, parsed.value.host_session_id);
 	const outcome = await ctx.hub(connection.user_id).register(connection.id, sessionId, parsed.value);
 	if (outcome.kind === "too_many_sessions")

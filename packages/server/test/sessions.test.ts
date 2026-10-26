@@ -36,7 +36,7 @@ test("sessions per connection are capped; gone sessions make room", async () => 
 	await app.register(token, "h2");
 	const third = await app.call("POST", "/byoa/sessions", {
 		token,
-		body: { host_session_id: "h3", host: "pi", connector_version: "0.1.0", started_at: "2026-10-21T11:00:00Z", capabilities: CAPS },
+		body: { host_session_id: "h3", host: "claude-code", connector_version: "0.1.0", started_at: "2026-10-21T11:00:00Z", capabilities: CAPS },
 	});
 	assert.equal(third.status, 429);
 	assert.equal((await body(third)).error, "too_many_sessions");
@@ -135,4 +135,19 @@ test("a message no event answered is offered again after 30 s, not before", asyn
 	await app.clock.advance(31_000);
 	const later = app.poll(token, id);
 	assert.ok(await pending(later));
+});
+
+test("a session must say the host the connection was paired as", async () => {
+	const app = makeApp();
+	const { token } = await app.pair(); // paired as claude-code
+	const wrong = await app.call("POST", "/byoa/sessions", {
+		token,
+		body: { host_session_id: "h1", host: "pi", connector_version: "0.1.0", started_at: "2026-10-21T11:00:00Z", capabilities: CAPS },
+	});
+	assert.equal(wrong.status, 422);
+	const err = await body(wrong);
+	assert.equal(err.error, "validation_error");
+	assert.match(err.error_description, /paired as claude-code, not pi/);
+	assert.equal((await app.byoa.sessions("ramos"))[0]?.sessions.length, 0, "nothing registered");
+	await app.register(token, "h1");
 });
