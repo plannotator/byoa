@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.1.3
+
+- Fix: the conformance suite's own checks ignored the `settle` option. Its "is this poll still held" check and its UI-event watcher waited with the default settle, so against a store with real I/O a poll could look held only because the store had not answered yet. Every wait in the suite now uses the caller's `settle`. Found by Workspaces against Postgres plus a Durable Object.
+
 ## 0.1.2
 
 - Fix: pressing Connect on the approval page failed in real browsers. The built-in page sent `Referrer-Policy: no-referrer`, so a browser posted the form with `Origin: null`, and the default CSRF check, which wanted `Origin` equal to `app.origin`, refused every press. The pages now send `Referrer-Policy: same-origin`, and the default check also passes a POST or DELETE whose `Origin` is `null` or missing when the browser says `Sec-Fetch-Site: same-origin`. A custom page that keeps `no-referrer` works too. Both paths are proven by pressing Connect in Chromium.

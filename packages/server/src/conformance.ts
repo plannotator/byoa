@@ -129,9 +129,9 @@ async function json(response: Response | Promise<Response>): Promise<any> {
 }
 
 /** True when the promise has not settled after pending work ran. */
-async function pending(promise: Promise<unknown>): Promise<boolean> {
+async function pending(kit: Kit, promise: Promise<unknown>): Promise<boolean> {
 	const marker = Symbol("pending");
-	await settle();
+	await kit.settle();
 	return (await Promise.race([promise, Promise.resolve(marker)])) === marker;
 }
 
@@ -177,12 +177,15 @@ function withoutUserCode(record: PairingRecord | null): Omit<PairingRecord, "use
 class Kit {
 	readonly env: StoreUnderTest;
 	readonly clock: FakeClock;
+	/** Lets the store's pending work finish: the caller's `settle` option, or the default. */
+	readonly settle: () => Promise<void>;
 	/** Fresh ids per case, so cases never see each other's records. */
 	readonly alice = `alice-${hexId()}`;
 	readonly bob = `bob-${hexId()}`;
 
-	constructor(env: StoreUnderTest, settle?: () => Promise<void>) {
-		this.clock = new FakeClock(T0, settle);
+	constructor(env: StoreUnderTest, wait?: () => Promise<void>) {
+		this.settle = wait ?? (() => settle());
+		this.clock = new FakeClock(T0, this.settle);
 		this.env = env;
 	}
 
@@ -318,7 +321,7 @@ class App {
 	async watch(user: string) {
 		const seen: UiEvent[] = [];
 		const stop = this.byoa.subscribe(user, (event) => seen.push(event));
-		await settle();
+		await this.kit.settle();
 		return { seen, stop, of: (id: string) => seen.filter((e) => e.type !== "sessions" && e.message_id === id) };
 	}
 
@@ -719,7 +722,7 @@ const CASES: CaseDef[] = [
 			const id = await app.register(token);
 			const held = app.poll(token, id);
 			await app.clock.advance(19_999);
-			ok(await pending(held), "the poll is still held at 19.999 s");
+			ok(await pending(kit, held), "the poll is still held at 19.999 s");
 			await app.clock.advance(1);
 			deepEqual(await json(status(held, 200, "the held poll")), { commands: [] }, "the held poll at 20 s");
 		},
@@ -732,10 +735,10 @@ const CASES: CaseDef[] = [
 			const { token } = await app.pair(kit.alice);
 			const id = await app.register(token);
 			const older = app.poll(token, id, "ready");
-			ok(await pending(older), "the first poll is held");
+			ok(await pending(kit, older), "the first poll is held");
 			const newer = app.poll(token, id, "busy");
 			deepEqual(await json(status(older, 200, "the older poll")), { commands: [] }, "the older poll");
-			ok(await pending(newer), "the newer poll is held");
+			ok(await pending(kit, newer), "the newer poll is held");
 			equal((await app.byoa.sessions(kit.alice))[0]?.sessions[0]?.state, "busy", "the newer poll's state");
 			const messageId = await app.sent(kit.alice, id, "wake");
 			deepEqual((await json(newer)).commands.map((c: any) => c.message_id), [messageId], "a send answers the held poll");
@@ -755,7 +758,7 @@ const CASES: CaseDef[] = [
 			equal(await state(), "gone", "the state at 60 s");
 			// A poll brings it back.
 			const back = app.poll(token, id);
-			await settle();
+			await kit.settle();
 			equal(await state(), "ready", "the state after a poll");
 			await app.clock.advance(20_000);
 			await back;
@@ -778,7 +781,7 @@ const CASES: CaseDef[] = [
 			await status(app.events(token, id, [{ message_id: messageId, seq: 0, type: "queued" }]), 204, "events");
 			await app.clock.advance(31_000);
 			const later = app.poll(token, id);
-			ok(await pending(later), "once an event answered it, a poll 31 s later holds empty");
+			ok(await pending(kit, later), "once an event answered it, a poll 31 s later holds empty");
 			await app.clock.advance(20_000);
 			deepEqual(await json(later), { commands: [] }, "and answers [] at the hold");
 		},
@@ -813,7 +816,7 @@ const CASES: CaseDef[] = [
 			const gap = await status(post([{ seq: 9, type: "delta", text: "far" }]), 422, "seq 9, past the look-ahead");
 			deepEqual(await gap.json(), { error: "seq_gap", error_description: `Resend ${messageId} from seq 2.`, message_id: messageId, expected: 2 }, "the seq_gap answer");
 			await status(post([{ seq: 2, type: "delta", text: "c" }, { seq: 3, type: "done" }]), 204, "seq 2 and the end");
-			await settle();
+			await kit.settle();
 			deepEqual(shape(watch.of(messageId)), ["accepted", "started#0", "delta#1", "delta#2", "done#3"], "what the UI saw");
 			watch.stop();
 		},
@@ -883,7 +886,7 @@ const CASES: CaseDef[] = [
 			deepEqual(await app.commands(token, id), [{ type: "interrupt", message_id: handed }], "the next poll carries the interrupt");
 			await status(app.events(token, id, [{ message_id: handed, seq: 0, type: "interrupted", reason: "stopped" }]), 204, "events");
 			deepEqual(await json(app.interrupt(kit.alice, id, handed)), { outcome: "already_finished" }, "interrupt a finished message");
-			await settle();
+			await kit.settle();
 			deepEqual(shape(watch.of(waiting)), ["accepted", "withdrawn"], "the UI saw the waiting message withdrawn");
 			deepEqual(shape(watch.of(handed)), ["accepted", "interrupted#0"], "the UI saw the handed message interrupted");
 			watch.stop();
@@ -903,7 +906,7 @@ const CASES: CaseDef[] = [
 			const messageId = await app.sent(kit.alice, s1, "in flight");
 			await app.commands(laptop.token, s1);
 			const held = app.poll(laptop.token, s1);
-			await pending(held);
+			await pending(kit, held);
 
 			await status(app.call("DELETE", `/byoa/ui/connections/${laptop.connectionId}`, { user: kit.bob }), 404, "Bob disconnects Alice's connection");
 			await status(app.call("DELETE", `/byoa/ui/connections/${laptop.connectionId}`, { user: kit.alice }), 204, "Alice disconnects it");
@@ -912,7 +915,7 @@ const CASES: CaseDef[] = [
 			await status(app.registerRaw(laptop.token, "host-1"), 401, "register with the revoked token");
 			equal((await json(status(app.send(kit.alice, s1, "after"), 404, "send to a dropped session"))).error, "session_not_found", "the error");
 			deepEqual(await app.sessionIds(kit.alice), [s2], "only the other connection's session is left");
-			await settle();
+			await kit.settle();
 			deepEqual(watch.of(messageId).at(-1), { type: "gone", session_id: s1, message_id: messageId, reason: "disconnected" }, "the open message ends gone");
 			const other = await app.sent(kit.alice, s2, "still here");
 			deepEqual((await app.commands(desk.token, s2)).map((c) => c.message_id), [other], "the other connection still works");

@@ -60,6 +60,30 @@ test("conformance: a store whose I/O outlasts the default settle passes with its
 	await held.run();
 });
 
+test("conformance: the settle option also decides whether a poll is still held", async () => {
+	// A broken store: its hub answers every poll at once, but only after 40 ms
+	// of real time. With the default settle the poll would look held and pass.
+	const broken = () => {
+		const base = memoryStore();
+		return {
+			store: {
+				...base,
+				hub: (userId: string, config: Parameters<typeof base.hub>[1]) => {
+					const hub = base.hub(userId, config);
+					const poll = async () => (await new Promise((resolve) => setTimeout(resolve, 40)), { kind: "commands" as const, commands: [] });
+					return new Proxy(hub, {
+						get: (target, key) => (key === "poll" ? poll : typeof Reflect.get(target, key) === "function" ? Reflect.get(target, key).bind(target) : Reflect.get(target, key)),
+					});
+				},
+			},
+		};
+	};
+	const cases = storeConformance(broken, { settle: () => new Promise((resolve) => setTimeout(resolve, 200)) });
+	const newer = cases.find((c) => c.name.startsWith("timing: a newer poll answers"));
+	assert.ok(newer);
+	await assert.rejects(newer.run(), /the first poll is held/);
+});
+
 test("an encoded BYOA path is refused, never decoded", async () => {
 	const { createByoa } = await import("../src/index.ts");
 	const byoa = createByoa({ app: { id: "t", name: "T", origin: APP }, authenticate: async () => ({ userId: "u", displayName: "U" }) });
