@@ -143,16 +143,29 @@ function sseData(text: string): string[] {
 }
 
 /** A `tools/call` result as text: the text parts, then the structured
- * content as JSON unless a text part already is that JSON. A server may put
- * only a summary in the text and the data in `structuredContent`; the host
- * shows the model this text alone, so dropping either loses something. */
+ * content as JSON unless the text already holds every value in it. A server
+ * may put only a summary in the text and the data in `structuredContent`;
+ * the host shows the model this text alone, so dropping either loses
+ * something, and repeating data the text carries only costs tokens. */
 export function resultText(result: unknown): { text: string; isError: boolean } {
 	const value = isRecord(result) ? result : {};
 	const parts = Array.isArray(value.content) ? value.content : [];
-	const texts = parts
+	const text = parts
 		.map((part) => (isRecord(part) ? (typeof part.text === "string" ? part.text : `[${String(part.type ?? "content")} omitted]`) : ""))
-		.filter((t) => t !== "");
-	const structured = isRecord(value.structuredContent) ? JSON.stringify(value.structuredContent) : "";
-	const repeated = structured !== "" && texts.some((t) => JSON.stringify(parseJsonText(t) ?? null) === structured);
-	return { text: [...texts, ...(structured !== "" && !repeated ? [structured] : [])].join("\n"), isError: value.isError === true };
+		.filter((t) => t !== "")
+		.join("\n");
+	if (!isRecord(value.structuredContent) || holds(text, value.structuredContent)) return { text, isError: value.isError === true };
+	const structured = JSON.stringify(value.structuredContent);
+	return { text: text === "" ? structured : `${text}\n${structured}`, isError: value.isError === true };
+}
+
+/** True when every string, number and boolean in `data` appears in `text`,
+ * as written or JSON-escaped (pretty JSON, a document body verbatim). */
+function holds(text: string, data: unknown): boolean {
+	if (text === "") return false;
+	if (typeof data === "string") return text.includes(data) || text.includes(JSON.stringify(data).slice(1, -1));
+	if (typeof data === "number" || typeof data === "boolean") return text.includes(String(data));
+	if (Array.isArray(data)) return data.every((item) => holds(text, item));
+	if (isRecord(data)) return Object.values(data).every((item) => holds(text, item));
+	return true;
 }

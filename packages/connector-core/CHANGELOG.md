@@ -2,7 +2,7 @@
 
 ## 0.1.3
 
-- Fix: a proxied tool call whose result had both text and `structuredContent` gave the model only the text. A server that puts a one-line summary in the text and the data in `structuredContent` (as Workspaces' MCP did) left the agent with the summary alone; on Workspaces staging a tagged agent could not read its thread. The structured content is now added as JSON after the text, unless a text part already is that JSON.
+- Fix: a proxied tool call whose result had both text and `structuredContent` gave the model only the text. A server that puts a one-line summary in the text and the data in `structuredContent` (as Workspaces' MCP did) left the agent with the summary alone; on Workspaces staging a tagged agent could not read its thread. The structured content is now added as JSON after the text, unless the text already holds every value in it (as written or JSON-escaped), so a server that repeats its data in the text, as the MCP spec asks, is not sent twice.
 - `connector_version` is now `0.1.3`.
 
 ## 0.1.2

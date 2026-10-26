@@ -19,6 +19,19 @@ test("a text block that already is the structured JSON is not repeated", () => {
 	assert.equal(resultText({ content: [{ type: "text", text: pretty }], structuredContent: data }).text, pretty);
 });
 
+test("a text that carries the data in its own layout is not repeated", () => {
+	// Workspaces after its fix: a summary line, then pretty JSON.
+	const summaryAndJson = `Listed 1 annotations.\n${JSON.stringify(data, null, 2)}`;
+	assert.equal(resultText({ content: [{ type: "text", text: summaryAndJson }], structuredContent: data }).text, summaryAndJson);
+	// A document body verbatim after its metadata; the body has newlines and quotes.
+	const doc = { path: "plan.md", version: 3, body: '# Plan\n\nShip "it".' };
+	const read = `Read plan.md (version 3)\n\n${doc.body}`;
+	assert.equal(resultText({ content: [{ type: "text", text: read }], structuredContent: doc }).text, read);
+	// One value missing from the text: the data is added.
+	const partial = "Read plan.md";
+	assert.equal(resultText({ content: [{ type: "text", text: partial }], structuredContent: doc }).text, `${partial}\n${JSON.stringify(doc)}`);
+});
+
 test("structured data alone, text alone, and other parts", () => {
 	assert.equal(resultText({ structuredContent: data }).text, JSON.stringify(data));
 	assert.equal(resultText({ content: [{ type: "text", text: "done" }] }).text, "done");
