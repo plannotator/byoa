@@ -295,7 +295,7 @@ Cut after the implementers' votes, with the reason:
 - **An on-disk lease and claim per message.** Add them when a duplicate delivery is actually seen.
 - **Per-app rate limits.** Only a person's action starts a turn.
 - **Connector policy beyond `share`.**
-- **An end-of-session call.** Sessions go `gone` after 60 s.
+- **An end-of-session call.** Sessions go `gone` after 60 s. Reopened for 0.2: with the real Claude Code plugin on Workspaces staging, a `/clear` left the old session `ready` for about a minute, and a team tab listed two identical agents.
 - **Tool start and end phases.**
 - **Sharing one UI stream across tabs.**
 
