@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Fix: a proxied tool call whose result had both text and `structuredContent` gave the model only the text. A server that puts a one-line summary in the text and the data in `structuredContent` (as Workspaces' MCP did) left the agent with the summary alone; on Workspaces staging a tagged agent could not read its thread. The structured content is now added as JSON after the text, unless a text part already is that JSON.
+- `connector_version` is now `0.1.3`.
+
 ## 0.1.2
 
 - Fix: the sharing settings were a plain object keyed by app id. An app whose id names an `Object.prototype` member (`constructor`, `toString`) got a function back, and its sessions failed to register. A `"__proto__"` key in `~/.byoa/policy.json` replaced the table's prototype. They are a `Map` now, so every id is just a key. Neither case could widen what is shared.

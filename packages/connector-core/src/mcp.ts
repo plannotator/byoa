@@ -142,14 +142,17 @@ function sseData(text: string): string[] {
 		.filter((data) => data.trim() !== "");
 }
 
-/** A `tools/call` result as text: the text parts, else the structured content. */
+/** A `tools/call` result as text: the text parts, then the structured
+ * content as JSON unless a text part already is that JSON. A server may put
+ * only a summary in the text and the data in `structuredContent`; the host
+ * shows the model this text alone, so dropping either loses something. */
 export function resultText(result: unknown): { text: string; isError: boolean } {
 	const value = isRecord(result) ? result : {};
 	const parts = Array.isArray(value.content) ? value.content : [];
-	const text = parts
+	const texts = parts
 		.map((part) => (isRecord(part) ? (typeof part.text === "string" ? part.text : `[${String(part.type ?? "content")} omitted]`) : ""))
-		.filter((t) => t !== "")
-		.join("\n");
-	const structured = text === "" && isRecord(value.structuredContent) ? JSON.stringify(value.structuredContent) : "";
-	return { text: text || structured, isError: value.isError === true };
+		.filter((t) => t !== "");
+	const structured = isRecord(value.structuredContent) ? JSON.stringify(value.structuredContent) : "";
+	const repeated = structured !== "" && texts.some((t) => JSON.stringify(parseJsonText(t) ?? null) === structured);
+	return { text: [...texts, ...(structured !== "" && !repeated ? [structured] : [])].join("\n"), isError: value.isError === true };
 }

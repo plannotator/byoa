@@ -301,6 +301,7 @@ Cut after the implementers' votes, with the reason:
 
 Not designed yet:
 
+- reads and writes as separate permissions: one proxied tool per app (7) means a host's "don't ask again" for it allows the app's writes along with its reads (seen with Claude Code on Workspaces staging);
 - starting a new session from the app;
 - waking a closed terminal;
 - an "any matching session may claim" primitive (AppNotes);

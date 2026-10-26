@@ -1,6 +1,6 @@
 {
   "name": "@plannotator/byoa-connector-core",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "The host-free core of the BYOA connector: pairing, credentials, the session doors, the turn scheduler and the proxied tools. No Node, no host: every effect goes through a port.",
   "license": "MIT OR Apache-2.0",
   "repository": {
